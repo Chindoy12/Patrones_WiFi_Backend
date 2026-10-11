@@ -46,32 +46,40 @@ Los patrones, el problema que resuelve cada uno y los que se descartaron están 
 
 ## API
 
-Todas las rutas `/api/**` requieren `Authorization: Bearer <token>` salvo login y registro.
+Todas las rutas `/api/**` requieren `Authorization: Bearer <token>` salvo login y registro. «equipo» = ADMIN, ANALYST
+o VIEWER. Para un usuario final (`USER`) las rutas del equipo responden **404**, igual que una ruta inexistente.
 
 | Método | Ruta | Rol |
 |---|---|---|
-| POST | `/api/auth/login` | público (no existe registro: las cuentas las crea el administrador) |
-| GET | `/api/auth/me` | autenticado |
-| GET / POST / PATCH / DELETE | `/api/users`, `/api/users/{id}/role`, `/api/users/{id}` | ADMIN (máximo 3 cuentas) |
-| GET / POST | `/api/locations`, `/api/locations/{id}/zones`, `/api/zones` | GET autenticado · POST ADMIN |
-| GET / POST / PUT / DELETE | `/api/networks[/{id}]` | GET autenticado · resto ADMIN |
-| GET / POST | `/api/devices`, `/api/devices/{id}/sessions` | GET autenticado · POST ADMIN |
-| GET | `/api/networks/{id}/measurements?from&to&limit` | autenticado |
+| POST | `/api/auth/login` | público |
+| POST | `/api/auth/register` `{"username","password"}` | público: crea un usuario final (`USER`) y devuelve su token |
+| GET | `/api/auth/me` | cualquier cuenta |
+| GET / POST / PATCH / DELETE | `/api/users`, `/api/users/{id}/role`, `/api/users/{id}` | ADMIN (solo cuentas del equipo, máximo 3) |
+| GET / POST | `/api/locations`, `/api/locations/{id}/zones`, `/api/zones` | GET equipo · POST ADMIN |
+| GET / POST / PUT / DELETE | `/api/networks[/{id}]` | GET equipo · resto ADMIN |
+| GET / POST | `/api/devices`, `/api/devices/{id}/sessions` | GET equipo · POST ADMIN |
+| GET | `/api/networks/{id}/measurements?from&to&limit` | equipo |
 | POST | `/api/networks/{id}/measurements/collect` | ADMIN, ANALYST |
-| GET | `/api/networks/{id}/traffic`, `/api/networks/{id}/protocols` | autenticado |
+| GET | `/api/networks/{id}/traffic`, `/api/networks/{id}/protocols` | equipo |
 | POST | `/api/networks/{id}/analyses` `{"type":"THRESHOLD|STATISTICAL|ANOMALY_DETECTION"}` | ADMIN, ANALYST |
-| GET | `/api/analyses?networkId&limit`, `/api/analyses/strategies`, `/api/anomalies` | autenticado |
-| GET / PATCH | `/api/alerts?status`, `/api/alerts/{id}/acknowledge`, `/api/alerts/{id}/resolve` | GET autenticado · PATCH ADMIN, ANALYST |
-| GET | `/api/dashboard/summary` | autenticado |
+| GET | `/api/analyses?networkId&limit`, `/api/analyses/strategies`, `/api/anomalies` | equipo |
+| GET / PATCH | `/api/alerts?status`, `/api/alerts/{id}/acknowledge`, `/api/alerts/{id}/resolve` | GET equipo · PATCH ADMIN, ANALYST |
+| GET | `/api/dashboard/summary` | equipo |
 | GET | `/api/observability/data-sources`, `/api/observability/activity` | ADMIN |
-| GET | `/api/reports/networks/{id}?from&to`, `/api/reports/comparison?networkIds=1,2` | autenticado |
+| GET | `/api/reports/networks/{id}?from&to`, `/api/reports/comparison?networkIds=1,2` | equipo |
 | GET | `/actuator/health` | público |
 
 Errores: `application/problem+json` con `detail` y, en validación, `errors` por campo.
 
 ## Seguridad
 
-- **Sin registro público.** Solo el administrador crea cuentas, con un máximo de 3 (`wifisense.accounts.max-users`).
+- **Dos tipos de cuenta.** El **equipo** (ADMIN, ANALYST, VIEWER) lo crea solo el administrador, con un máximo de 3
+  (`wifisense.accounts.max-users`). Los **usuarios finales** (`USER`) se registran solos en `/api/auth/register`; no
+  cuentan en ese límite y no pueden elegir su rol. Nombres como `admin` o `soporte` están reservados.
+- **Funciones del equipo ocultas.** Para un usuario final, cualquier ruta del equipo responde 404 con el mismo cuerpo que
+  una ruta inexistente (`StaffOnlyAccessDeniedHandler`), así que no puede saber que existen. Los miembros del equipo
+  sin permiso reciben un 403 normal.
+- **Registro limitado:** máximo 5 cuentas por hora desde una misma dirección (`RegistrationThrottle`).
 - **Contraseñas:** se guardan solo como hash **BCrypt**; nunca se devuelven ni se registran en logs. Política
   (`PasswordPolicy`): 10 a 12 caracteres, al menos una mayúscula, un número y un carácter especial, sin espacios.
 - **Usuario:** 3 a 40 caracteres: un correo (`ana@campus.edu.co`) o un nombre (letras, números, `.`, `-`, `_`).

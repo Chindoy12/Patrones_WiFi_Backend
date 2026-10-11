@@ -33,7 +33,7 @@ class DataSourceDecoratorTest {
 
         assertThatThrownBy(() -> source.collect(TARGET))
                 .isInstanceOf(InvalidSnapshotException.class)
-                .hasMessageContaining("packet loss");
+                .hasMessageContaining("pérdida de paquetes");
     }
 
     @Test

@@ -116,4 +116,23 @@ class NetworkControllerTest {
 
         verify(analysisFacade).analyze(eq(1L), eq(AnalysisType.THRESHOLD), any());
     }
+
+    @Test
+    void endUsersCannotEvenSeeThatTeamEndpointsExist() throws Exception {
+        mvc.perform(get("/api/networks").with(as("USER")))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.detail").value("El recurso solicitado no existe."))
+                .andExpect(jsonPath("$.title").value("Not Found"))
+                .andExpect(jsonPath("$.instance").value("/api/networks"));
+        mvc.perform(post("/api/networks/1/analyses").with(as("USER"))
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"type\":\"THRESHOLD\"}"))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void teamMembersStillGetAnHonestForbidden() throws Exception {
+        mvc.perform(post("/api/networks/1/analyses").with(as("VIEWER"))
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"type\":\"THRESHOLD\"}"))
+                .andExpect(status().isForbidden());
+    }
 }

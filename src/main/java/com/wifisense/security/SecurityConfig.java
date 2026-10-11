@@ -34,6 +34,7 @@ public class SecurityConfig {
 
     private static final String ADMIN = "ADMIN";
     private static final String ANALYST = "ANALYST";
+    private static final String VIEWER = "VIEWER";
 
     @Bean
     SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
@@ -43,8 +44,9 @@ public class SecurityConfig {
                 })
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers(HttpMethod.POST, "/api/auth/login").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/auth/login", "/api/auth/register").permitAll()
                         .requestMatchers("/actuator/health").permitAll()
+                        .requestMatchers("/api/auth/me").authenticated()
                         .requestMatchers("/api/users/**", "/api/observability/**").hasRole(ADMIN)
                         .requestMatchers(HttpMethod.POST, "/api/networks/*/measurements/collect",
                                 "/api/networks/*/analyses").hasAnyRole(ADMIN, ANALYST)
@@ -52,7 +54,9 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST, "/api/**").hasRole(ADMIN)
                         .requestMatchers(HttpMethod.PUT, "/api/**").hasRole(ADMIN)
                         .requestMatchers(HttpMethod.DELETE, "/api/**").hasRole(ADMIN)
+                        .requestMatchers("/api/**").hasAnyRole(ADMIN, ANALYST, VIEWER)
                         .anyRequest().authenticated())
+                .exceptionHandling(errors -> errors.accessDeniedHandler(new StaffOnlyAccessDeniedHandler()))
                 .oauth2ResourceServer(oauth -> oauth.jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter())))
                 .build();
     }

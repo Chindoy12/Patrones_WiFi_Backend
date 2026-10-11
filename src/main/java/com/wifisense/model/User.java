@@ -10,7 +10,16 @@ import java.time.Instant;
 @Table(name = "users")
 public class User {
 
-    public enum Role { ADMIN, ANALYST, VIEWER }
+    /** ADMIN, ANALYST and VIEWER are the team; USER is a self-registered end user. */
+    public enum Role {
+        ADMIN, ANALYST, VIEWER, USER;
+
+        public static final java.util.Set<Role> STAFF = java.util.EnumSet.of(ADMIN, ANALYST, VIEWER);
+
+        public boolean isStaff() {
+            return STAFF.contains(this);
+        }
+    }
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

@@ -2,10 +2,12 @@ package com.wifisense.controller;
 
 import com.wifisense.dto.AuthResponse;
 import com.wifisense.dto.LoginRequest;
+import com.wifisense.dto.RegisterRequest;
 import com.wifisense.dto.UserResponse;
 import com.wifisense.service.AuthService;
 import com.wifisense.service.UserService;
 import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
@@ -25,6 +27,12 @@ public class AuthController {
     @PostMapping("/login")
     public AuthResponse login(@RequestBody LoginRequest request, HttpServletRequest http) {
         return authService.login(request, clientAddress(http));
+    }
+
+    @PostMapping("/register")
+    @ResponseStatus(HttpStatus.CREATED)
+    public AuthResponse register(@RequestBody RegisterRequest request, HttpServletRequest http) {
+        return authService.register(request, clientAddress(http));
     }
 
     @GetMapping("/me")

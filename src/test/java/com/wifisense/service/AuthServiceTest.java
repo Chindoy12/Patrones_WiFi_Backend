@@ -1,9 +1,12 @@
 package com.wifisense.service;
 
 import com.wifisense.dto.LoginRequest;
+import com.wifisense.dto.RegisterRequest;
 import com.wifisense.security.LoginAttemptService;
 import com.wifisense.security.LoginBlockedException;
 import com.wifisense.security.PasswordPolicy;
+import com.wifisense.security.RegistrationBlockedException;
+import com.wifisense.security.RegistrationThrottle;
 import com.wifisense.security.TokenService;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -17,8 +20,10 @@ class AuthServiceTest {
 
     private final AuthenticationManager manager = mock(AuthenticationManager.class);
     private final LoginAttemptService attempts = mock(LoginAttemptService.class);
-    private final AuthService service = new AuthService(manager, mock(TokenService.class), mock(UserService.class),
-            attempts, new PasswordPolicy());
+    private final UserService users = mock(UserService.class);
+    private final RegistrationThrottle registrations = mock(RegistrationThrottle.class);
+    private final AuthService service = new AuthService(manager, mock(TokenService.class), users,
+            attempts, new PasswordPolicy(), registrations);
 
     @Test
     void oversizedInputFailsWithoutReachingTheDatabase() {
@@ -45,5 +50,23 @@ class AuthServiceTest {
         assertThatThrownBy(() -> service.login(new LoginRequest("analyst", "Redes#2026a"), "1.2.3.4"))
                 .isInstanceOf(LoginBlockedException.class);
         verify(manager, never()).authenticate(any());
+    }
+
+    @Test
+    void throttledAddressCannotRegister() {
+        doThrow(new RegistrationBlockedException()).when(registrations).check("1.2.3.4");
+
+        assertThatThrownBy(() -> service.register(new RegisterRequest("ana", "Redes#2026a"), "1.2.3.4"))
+                .isInstanceOf(RegistrationBlockedException.class);
+        verify(users, never()).register(any(), any());
+    }
+
+    @Test
+    void failedRegistrationIsNotCounted() {
+        when(users.register("ana", "weak")).thenThrow(new InvalidAccountException(java.util.List.of("x")));
+
+        assertThatThrownBy(() -> service.register(new RegisterRequest("ana", "weak"), "1.2.3.4"))
+                .isInstanceOf(InvalidAccountException.class);
+        verify(registrations, never()).record(any());
     }
 }

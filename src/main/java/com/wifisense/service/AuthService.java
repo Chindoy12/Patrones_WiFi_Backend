@@ -2,9 +2,11 @@ package com.wifisense.service;
 
 import com.wifisense.dto.AuthResponse;
 import com.wifisense.dto.LoginRequest;
+import com.wifisense.dto.RegisterRequest;
 import com.wifisense.security.LoginAttemptService;
 import com.wifisense.security.LoginBlockedException;
 import com.wifisense.security.PasswordPolicy;
+import com.wifisense.security.RegistrationThrottle;
 import com.wifisense.security.TokenService;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.BadCredentialsException;
@@ -21,14 +23,25 @@ public class AuthService {
     private final UserService userService;
     private final LoginAttemptService attempts;
     private final PasswordPolicy policy;
+    private final RegistrationThrottle registrations;
 
     public AuthService(AuthenticationManager authenticationManager, TokenService tokenService,
-                       UserService userService, LoginAttemptService attempts, PasswordPolicy policy) {
+                       UserService userService, LoginAttemptService attempts, PasswordPolicy policy,
+                       RegistrationThrottle registrations) {
         this.authenticationManager = authenticationManager;
         this.tokenService = tokenService;
         this.userService = userService;
         this.attempts = attempts;
         this.policy = policy;
+        this.registrations = registrations;
+    }
+
+    /** Creates an end-user account (role USER) and signs it in right away. */
+    public AuthResponse register(RegisterRequest request, String clientAddress) {
+        registrations.check(clientAddress);
+        userService.register(request.username(), request.password());
+        registrations.record(clientAddress);
+        return login(new LoginRequest(request.username().trim(), request.password()), clientAddress);
     }
 
     /** Every failure looks the same to the client, so the response never reveals which field was wrong. */

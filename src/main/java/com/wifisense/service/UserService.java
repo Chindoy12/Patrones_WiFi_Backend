@@ -1,85 +1,55 @@
 package com.wifisense.service;
 
-import com.wifisense.dto.CreateUserRequest;
+import com.wifisense.dto.RegisterRequest;
 import com.wifisense.dto.UserResponse;
 import com.wifisense.model.User;
 import com.wifisense.repository.UserRepository;
-import com.wifisense.security.AccountProperties;
-import com.wifisense.security.PasswordPolicy;
-import org.springframework.data.domain.Sort;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.ArrayList;
 import java.util.List;
 
-/** Accounts are created only by an administrator, up to a fixed maximum (there is no self-registration). */
 @Service
 public class UserService {
 
     private final UserRepository users;
     private final PasswordEncoder passwordEncoder;
-    private final PasswordPolicy policy;
-    private final AccountProperties accounts;
 
-    public UserService(UserRepository users, PasswordEncoder passwordEncoder, PasswordPolicy policy,
-                       AccountProperties accounts) {
+    public UserService(UserRepository users, PasswordEncoder passwordEncoder) {
         this.users = users;
         this.passwordEncoder = passwordEncoder;
-        this.policy = policy;
-        this.accounts = accounts;
     }
 
+    /** Self-registration always creates a VIEWER; only an ADMIN can grant higher roles. */
     @Transactional
-    public UserResponse create(CreateUserRequest request) {
-        List<String> errors = new ArrayList<>(policy.usernameViolations(request.username()));
-        errors.addAll(policy.passwordViolations(request.password()));
-        if (!errors.isEmpty()) {
-            throw new InvalidAccountException(errors);
+    public UserResponse register(RegisterRequest request) {
+        if (users.existsByUsername(request.username())) {
+            throw new DuplicateResourceException("Username already in use");
         }
-        if (users.count() >= accounts.maxUsers()) {
-            throw new UserLimitException(accounts.maxUsers());
+        if (users.existsByEmail(request.email())) {
+            throw new DuplicateResourceException("Email already in use");
         }
-        if (users.existsByUsernameIgnoreCase(request.username())) {
-            throw new DuplicateResourceException("Ese nombre de usuario ya existe.");
-        }
-        User user = new User(request.username(), PasswordPolicy.emailFor(request.username()),
-                passwordEncoder.encode(request.password()), request.role());
+        User user = new User(request.username(), request.email(), passwordEncoder.encode(request.password()),
+                User.Role.VIEWER);
         return UserResponse.from(users.save(user));
     }
 
     @Transactional(readOnly = true)
     public UserResponse findByUsername(String username) {
         return users.findByUsername(username).map(UserResponse::from)
-                .orElseThrow(() -> new ResourceNotFoundException("el usuario", username));
+                .orElseThrow(() -> new ResourceNotFoundException("User", username));
     }
 
     @Transactional(readOnly = true)
     public List<UserResponse> list() {
-        return users.findAll(Sort.by("username")).stream().map(UserResponse::from).toList();
+        return users.findAll().stream().map(UserResponse::from).toList();
     }
 
     @Transactional
-    public UserResponse changeRole(Long id, User.Role role, String currentUsername) {
-        User user = find(id);
-        if (user.getUsername().equals(currentUsername)) {
-            throw new IllegalStateException("No puedes cambiar tu propio rol.");
-        }
+    public UserResponse changeRole(Long id, User.Role role) {
+        User user = users.findById(id).orElseThrow(() -> new ResourceNotFoundException("User", id));
         user.changeRole(role);
         return UserResponse.from(user);
-    }
-
-    @Transactional
-    public void delete(Long id, String currentUsername) {
-        User user = find(id);
-        if (user.getUsername().equals(currentUsername)) {
-            throw new IllegalStateException("No puedes eliminar tu propia cuenta.");
-        }
-        users.delete(user);
-    }
-
-    private User find(Long id) {
-        return users.findById(id).orElseThrow(() -> new ResourceNotFoundException("el usuario", id));
     }
 }

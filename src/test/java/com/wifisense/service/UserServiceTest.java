@@ -43,7 +43,7 @@ class UserServiceTest {
 
     @Test
     void neverExceedsTheMaximumNumberOfUsers() {
-        when(users.count()).thenReturn(3L);
+        when(users.countByRoleIn(User.Role.STAFF)).thenReturn(3L);
 
         assertThatThrownBy(() -> service.create(new CreateUserRequest("cuarto", "Redes#2026a", User.Role.VIEWER)))
                 .isInstanceOf(UserLimitException.class)
@@ -58,5 +58,50 @@ class UserServiceTest {
 
         assertThatThrownBy(() -> service.delete(1L, "admin")).isInstanceOf(IllegalStateException.class);
         assertThatThrownBy(() -> service.changeRole(1L, User.Role.VIEWER, "admin")).isInstanceOf(IllegalStateException.class);
+    }
+
+    @Test
+    void endUsersRegisterWithTheUserRole() {
+        when(encoder.encode("Redes#2026a")).thenReturn("$2a$hash");
+        when(users.save(any(User.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        var registered = service.register("  ana.lopez@gmail.com ", "Redes#2026a");
+
+        assertThat(registered.role()).isEqualTo(User.Role.USER);
+        assertThat(registered.username()).isEqualTo("ana.lopez@gmail.com");
+        verify(users).save(argThat(user -> user.getEmail().equals("ana.lopez@gmail.com")));
+    }
+
+    @Test
+    void endUsersDoNotCountTowardsTheTeamLimit() {
+        when(users.countByRoleIn(User.Role.STAFF)).thenReturn(3L);
+        when(users.save(any(User.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        assertThat(service.register("ana", "Redes#2026a").role()).isEqualTo(User.Role.USER);
+    }
+
+    @Test
+    void registrationRejectsWeakPasswordsDuplicatesAndReservedNames() {
+        assertThatThrownBy(() -> service.register("ana", "weak")).isInstanceOf(InvalidAccountException.class);
+
+        when(users.existsByUsernameIgnoreCase("Ana")).thenReturn(true);
+        assertThatThrownBy(() -> service.register("Ana", "Redes#2026a"))
+                .isInstanceOf(DuplicateResourceException.class)
+                .hasMessage("Ese nombre de usuario no está disponible.");
+
+        assertThatThrownBy(() -> service.register("Admin", "Redes#2026a")).isInstanceOf(DuplicateResourceException.class);
+        verify(users, never()).save(any());
+    }
+
+    @Test
+    void administratorOnlyManagesTeamAccounts() {
+        assertThatThrownBy(() -> service.create(new CreateUserRequest("ana", "Redes#2026a", User.Role.USER)))
+                .isInstanceOf(IllegalArgumentException.class);
+
+        User endUser = new User("ana", "ana@wifisense.local", "hash", User.Role.USER);
+        ReflectionTestUtils.setField(endUser, "id", 7L);
+        when(users.findById(7L)).thenReturn(Optional.of(endUser));
+        assertThatThrownBy(() -> service.delete(7L, "admin")).isInstanceOf(ResourceNotFoundException.class);
+        assertThatThrownBy(() -> service.changeRole(7L, User.Role.USER, "admin")).isInstanceOf(IllegalArgumentException.class);
     }
 }

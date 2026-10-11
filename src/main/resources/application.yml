@@ -30,6 +30,7 @@ wifisense:
     jwt-secret: ${JWT_SECRET}
     token-ttl: ${JWT_TTL:8h}
     allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173}
+    plain-passwords-allowed: ${PLAIN_PASSWORDS_ALLOWED:true}  # false = only sealed passwords from the web app
   accounts:
     admin-username: ${ADMIN_USERNAME:}
     admin-password: ${ADMIN_PASSWORD:}

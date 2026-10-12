@@ -55,6 +55,7 @@ o VIEWER. Para un usuario final (`USER`) las rutas del equipo responden **404**,
 | POST | `/api/auth/login` `{"username","challengeId","encryptedPassword"}` | público |
 | POST | `/api/auth/register` `{"username","password"}` | público: crea un usuario final (`USER`) y devuelve su token |
 | GET | `/api/auth/me` | cualquier cuenta |
+| GET / POST / PUT / DELETE | `/api/my/networks[/{id}]` `{"name","provider","contractedMbps"}` | USER: solo sus propias redes (máximo 3) |
 | GET / POST / PATCH / DELETE | `/api/users`, `/api/users/{id}/role`, `/api/users/{id}` | ADMIN (solo cuentas del equipo, máximo 3) |
 | GET / POST | `/api/locations`, `/api/locations/{id}/zones`, `/api/zones` | GET equipo · POST ADMIN |
 | GET / POST / PUT / DELETE | `/api/networks[/{id}]` | GET equipo · resto ADMIN |
@@ -80,6 +81,10 @@ Errores: `application/problem+json` con `detail` y, en validación, `errors` por
 - **Funciones del equipo ocultas.** Para un usuario final, cualquier ruta del equipo responde 404 con el mismo cuerpo que
   una ruta inexistente (`StaffOnlyAccessDeniedHandler`), así que no puede saber que existen. Los miembros del equipo
   sin permiso reciben un 403 normal.
+- **Mis redes (usuario final).** `/api/my/**` es exclusivo del rol `USER` (el equipo recibe 403). El dueño siempre
+  sale del token, nunca del cuerpo ni de la URL: pedir o modificar la red de otra persona responde 404, igual que una
+  red inexistente (`HomeNetworkService`). Máximo 3 redes por usuario, nombre único por dueño (también en la base de
+  datos) y validación de cada campo con mensajes en español.
 - **Registro limitado:** máximo 5 cuentas por hora desde una misma dirección (`RegistrationThrottle`).
 - **Contraseña cifrada en el navegador (además de HTTPS).** La web pide un reto de un solo uso
   (`GET /api/auth/challenge`: id + llave pública RSA) y envía `{challengeId, encryptedPassword}` cifrado con RSA-OAEP

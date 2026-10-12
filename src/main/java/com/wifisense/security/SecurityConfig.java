@@ -35,6 +35,7 @@ public class SecurityConfig {
     private static final String ADMIN = "ADMIN";
     private static final String ANALYST = "ANALYST";
     private static final String VIEWER = "VIEWER";
+    private static final String END_USER = "USER";
 
     @Bean
     SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
@@ -48,6 +49,7 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/auth/challenge").permitAll()
                         .requestMatchers("/actuator/health").permitAll()
                         .requestMatchers("/api/auth/me").authenticated()
+                        .requestMatchers("/api/my/**").hasRole(END_USER)
                         .requestMatchers("/api/users/**", "/api/observability/**").hasRole(ADMIN)
                         .requestMatchers(HttpMethod.POST, "/api/networks/*/measurements/collect",
                                 "/api/networks/*/analyses").hasAnyRole(ADMIN, ANALYST)

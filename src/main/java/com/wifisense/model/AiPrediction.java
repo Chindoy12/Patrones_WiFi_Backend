@@ -34,6 +34,11 @@ public class AiPrediction {
     @Column(nullable = false, length = 10)
     private Severity severity;
 
+    /** Null only for predictions saved before the AI diagnosed causes (migration V15). */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "anomaly_type", length = 20)
+    private AnomalyType anomalyType;
+
     @Column(nullable = false, length = 300)
     private String message;
 
@@ -63,6 +68,7 @@ public class AiPrediction {
         prediction.anomalyDetected = response.anomalyDetected();
         prediction.anomalyScore = response.anomalyScore();
         prediction.severity = response.severity();
+        prediction.anomalyType = AnomalyType.fromAi(response.anomalyType(), response.anomalyDetected());
         prediction.message = truncate(response.message(), 300);
         prediction.recommendation = response.recommendation() == null ? null : truncate(response.recommendation(), 1500);
         prediction.recommendationSource = "CLAUDE".equals(response.recommendationSource()) ? "CLAUDE" : "RULES";
@@ -81,6 +87,7 @@ public class AiPrediction {
     public boolean isAnomalyDetected() { return anomalyDetected; }
     public double getAnomalyScore() { return anomalyScore; }
     public Severity getSeverity() { return severity; }
+    public AnomalyType getAnomalyType() { return anomalyType; }
     public String getMessage() { return message; }
     public String getRecommendation() { return recommendation; }
     public String getRecommendationSource() { return recommendationSource; }

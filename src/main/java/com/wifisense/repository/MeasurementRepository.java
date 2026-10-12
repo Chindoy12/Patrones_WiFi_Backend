@@ -7,6 +7,7 @@ import org.springframework.data.jpa.repository.Query;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 
 public interface MeasurementRepository extends JpaRepository<Measurement, Long> {
 
@@ -20,4 +21,6 @@ public interface MeasurementRepository extends JpaRepository<Measurement, Long> 
 
     @Query("select avg(m.latencyMs) from Measurement m where m.measuredAt >= :since")
     Double averageLatencySince(Instant since);
+
+    Optional<Measurement> findTopByOrderByMeasuredAtDesc();
 }

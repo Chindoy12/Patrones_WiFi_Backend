@@ -51,7 +51,8 @@ o VIEWER. Para un usuario final (`USER`) las rutas del equipo responden **404**,
 
 | Método | Ruta | Rol |
 |---|---|---|
-| POST | `/api/auth/login` | público |
+| GET | `/api/auth/challenge` | público: reto de un solo uso para cifrar la contraseña |
+| POST | `/api/auth/login` `{"username","challengeId","encryptedPassword"}` | público |
 | POST | `/api/auth/register` `{"username","password"}` | público: crea un usuario final (`USER`) y devuelve su token |
 | GET | `/api/auth/me` | cualquier cuenta |
 | GET / POST / PATCH / DELETE | `/api/users`, `/api/users/{id}/role`, `/api/users/{id}` | ADMIN (solo cuentas del equipo, máximo 3) |
@@ -80,6 +81,11 @@ Errores: `application/problem+json` con `detail` y, en validación, `errors` por
   una ruta inexistente (`StaffOnlyAccessDeniedHandler`), así que no puede saber que existen. Los miembros del equipo
   sin permiso reciben un 403 normal.
 - **Registro limitado:** máximo 5 cuentas por hora desde una misma dirección (`RegistrationThrottle`).
+- **Contraseña cifrada en el navegador (además de HTTPS).** La web pide un reto de un solo uso
+  (`GET /api/auth/challenge`: id + llave pública RSA) y envía `{challengeId, encryptedPassword}` cifrado con RSA-OAEP
+  SHA-256 (`PasswordCipher`). Así la contraseña no aparece legible en la pestaña Red de F12 ni en proxies, y un
+  payload copiado no sirve: cada reto funciona una vez y vence en 2 minutos. Con `PLAIN_PASSWORDS_ALLOWED=false` el
+  backend rechaza contraseñas en texto plano.
 - **Contraseñas:** se guardan solo como hash **BCrypt**; nunca se devuelven ni se registran en logs. Política
   (`PasswordPolicy`): 10 a 12 caracteres, al menos una mayúscula, un número y un carácter especial, sin espacios.
 - **Usuario:** 3 a 40 caracteres: un correo (`ana@campus.edu.co`) o un nombre (letras, números, `.`, `-`, `_`).
@@ -90,9 +96,9 @@ Errores: `application/problem+json` con `detail` y, en validación, `errors` por
 - **Errores:** mensajes en español, sin trazas ni detalles internos (`GlobalExceptionHandler`).
 - **Secretos:** solo en variables de entorno de la plataforma; nunca en el repositorio ni en el frontend.
 
-Ver una contraseña en la pestaña *Red* de F12 de **tu propio** navegador es normal: es lo que tú escribiste,
-viaja cifrado por HTTPS y nadie más lo ve. Lo que importa es que el servidor no la guarde en claro (BCrypt) y que no
-haya secretos dentro del frontend.
+En la pestaña *Red* de F12 ya no se ve la contraseña: solo el `challengeId` y un texto cifrado distinto en cada
+intento. Quien controle el navegador donde se escribe podría aún leer el campo mientras se escribe; esa protección
+no existe en ninguna página web.
 
 ## Base de datos
 
@@ -116,6 +122,7 @@ estrategias de umbrales y estadística siguen funcionando.
 | `AI_API_KEY` | | Debe coincidir con la del servicio de IA |
 | `JWT_SECRET` | 32+ caracteres aleatorios | Firma de tokens; el arranque falla si falta |
 | `ADMIN_USERNAME` / `ADMIN_PASSWORD` | definidos por el equipo, nunca en el repositorio | Cuenta de administrador; la contraseña debe cumplir la política |
+| `PLAIN_PASSWORDS_ALLOWED` | `true` (por defecto) / `false` | `false`: solo se aceptan contraseñas cifradas por la web |
 | `CORS_ALLOWED_ORIGINS` | `http://localhost:5173` | Orígenes del frontend, separados por coma |
 | `MONITORING_ENABLED` | `true` | Recolección y análisis automáticos |
 

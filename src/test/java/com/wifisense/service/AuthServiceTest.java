@@ -4,6 +4,8 @@ import com.wifisense.dto.LoginRequest;
 import com.wifisense.dto.RegisterRequest;
 import com.wifisense.security.LoginAttemptService;
 import com.wifisense.security.LoginBlockedException;
+import com.wifisense.security.InvalidEncryptedPasswordException;
+import com.wifisense.security.PasswordCipher;
 import com.wifisense.security.PasswordPolicy;
 import com.wifisense.security.RegistrationBlockedException;
 import com.wifisense.security.RegistrationThrottle;
@@ -22,8 +24,13 @@ class AuthServiceTest {
     private final LoginAttemptService attempts = mock(LoginAttemptService.class);
     private final UserService users = mock(UserService.class);
     private final RegistrationThrottle registrations = mock(RegistrationThrottle.class);
+    private final PasswordCipher cipher = mock(PasswordCipher.class);
     private final AuthService service = new AuthService(manager, mock(TokenService.class), users,
-            attempts, new PasswordPolicy(), registrations);
+            attempts, new PasswordPolicy(), registrations, cipher);
+
+    {
+        when(cipher.reveal(any(), any(), any())).thenAnswer(invocation -> invocation.getArgument(0));
+    }
 
     @Test
     void oversizedInputFailsWithoutReachingTheDatabase() {
@@ -68,5 +75,25 @@ class AuthServiceTest {
         assertThatThrownBy(() -> service.register(new RegisterRequest("ana", "weak"), "1.2.3.4"))
                 .isInstanceOf(InvalidAccountException.class);
         verify(registrations, never()).record(any());
+    }
+
+    @Test
+    void anExpiredOrForgedSealedPasswordIsJustWrongCredentials() {
+        when(cipher.reveal(null, "old", "sealed")).thenThrow(new InvalidEncryptedPasswordException());
+
+        assertThatThrownBy(() -> service.login(new LoginRequest("analyst", null, "old", "sealed"), "1.2.3.4"))
+                .isInstanceOf(BadCredentialsException.class);
+        verify(attempts).recordFailure("analyst", "1.2.3.4");
+        verify(manager, never()).authenticate(any());
+    }
+
+    @Test
+    void sealedPasswordIsDecryptedBeforeAuthenticating() {
+        when(cipher.reveal(null, "c1", "sealed")).thenReturn("Redes#2026a");
+        when(manager.authenticate(any())).thenThrow(new BadCredentialsException("bad"));
+
+        assertThatThrownBy(() -> service.login(new LoginRequest("analyst", null, "c1", "sealed"), "1.2.3.4"))
+                .isInstanceOf(BadCredentialsException.class);
+        verify(manager).authenticate(argThat(token -> "Redes#2026a".equals(token.getCredentials())));
     }
 }

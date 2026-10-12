@@ -3,8 +3,10 @@ package com.wifisense.service;
 import com.wifisense.dto.AuthResponse;
 import com.wifisense.dto.LoginRequest;
 import com.wifisense.dto.RegisterRequest;
+import com.wifisense.security.InvalidEncryptedPasswordException;
 import com.wifisense.security.LoginAttemptService;
 import com.wifisense.security.LoginBlockedException;
+import com.wifisense.security.PasswordCipher;
 import com.wifisense.security.PasswordPolicy;
 import com.wifisense.security.RegistrationThrottle;
 import com.wifisense.security.TokenService;
@@ -24,24 +26,27 @@ public class AuthService {
     private final LoginAttemptService attempts;
     private final PasswordPolicy policy;
     private final RegistrationThrottle registrations;
+    private final PasswordCipher cipher;
 
     public AuthService(AuthenticationManager authenticationManager, TokenService tokenService,
                        UserService userService, LoginAttemptService attempts, PasswordPolicy policy,
-                       RegistrationThrottle registrations) {
+                       RegistrationThrottle registrations, PasswordCipher cipher) {
         this.authenticationManager = authenticationManager;
         this.tokenService = tokenService;
         this.userService = userService;
         this.attempts = attempts;
         this.policy = policy;
         this.registrations = registrations;
+        this.cipher = cipher;
     }
 
     /** Creates an end-user account (role USER) and signs it in right away. */
     public AuthResponse register(RegisterRequest request, String clientAddress) {
         registrations.check(clientAddress);
-        userService.register(request.username(), request.password());
+        String password = cipher.reveal(request.password(), request.challengeId(), request.encryptedPassword());
+        userService.register(request.username(), password);
         registrations.record(clientAddress);
-        return login(new LoginRequest(request.username().trim(), request.password()), clientAddress);
+        return authenticate(request.username().trim(), password, clientAddress);
     }
 
     /** Every failure looks the same to the client, so the response never reveals which field was wrong. */
@@ -50,14 +55,25 @@ public class AuthService {
         if (attempts.isBlocked(username, clientAddress)) {
             throw new LoginBlockedException();
         }
-        if (!policy.isPlausibleLogin(username, request.password())) {
+        String password;
+        try {
+            password = cipher.reveal(request.password(), request.challengeId(), request.encryptedPassword());
+        } catch (InvalidEncryptedPasswordException e) {
+            attempts.recordFailure(username, clientAddress);
+            throw new BadCredentialsException("Datos incorrectos");
+        }
+        return authenticate(username, password, clientAddress);
+    }
+
+    private AuthResponse authenticate(String username, String password, String clientAddress) {
+        if (!policy.isPlausibleLogin(username, password)) {
             attempts.recordFailure(username, clientAddress);
             throw new BadCredentialsException("Datos incorrectos");
         }
         Authentication authentication;
         try {
             authentication = authenticationManager.authenticate(
-                    new UsernamePasswordAuthenticationToken(username, request.password()));
+                    new UsernamePasswordAuthenticationToken(username, password));
         } catch (AuthenticationException e) {
             attempts.recordFailure(username, clientAddress);
             throw e;

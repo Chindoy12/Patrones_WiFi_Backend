@@ -65,6 +65,8 @@ o VIEWER. Para un usuario final (`USER`) las rutas del equipo responden **404**,
 | GET | `/api/networks/{id}/traffic`, `/api/networks/{id}/protocols` | equipo |
 | POST | `/api/networks/{id}/analyses` `{"type":"THRESHOLD|STATISTICAL|ANOMALY_DETECTION"}` | ADMIN, ANALYST |
 | GET | `/api/analyses?networkId&limit`, `/api/analyses/strategies`, `/api/anomalies` | equipo |
+| GET | `/api/anomalies/causes?days=30` | equipo: anomalías agrupadas por causa probable (1 a 365 días) |
+| GET | `/api/ai/model` | equipo: modelo en producción y comparación con LOF y One-Class SVM |
 | GET / PATCH | `/api/alerts?status`, `/api/alerts/{id}/acknowledge`, `/api/alerts/{id}/resolve` | GET equipo · PATCH ADMIN, ANALYST |
 | GET | `/api/dashboard/summary` | equipo |
 | GET | `/api/observability/data-sources`, `/api/observability/activity` | ADMIN |
@@ -116,6 +118,15 @@ El esquema pertenece a **WiFiSense-database** (migraciones Flyway). Este servici
 `HttpAiAnalysisClient` a `POST {AI_SERVICE_URL}/api/v1/anomalies/detect` con la cabecera `X-API-Key`. La respuesta
 se guarda en `ai_predictions` y marca si los datos eran simulados. Si la IA no responde, la API devuelve 503 y las
 estrategias de umbrales y estadística siguen funcionando.
+
+La IA también entrega la **causa probable** de cada anomalía (`anomalyType`: congestión,
+interferencia, cobertura débil, falla del proveedor, tráfico sospechoso o no identificada). Se guarda en
+`ai_predictions.anomaly_type` (migración V15) y se valida al leerla (`AnomalyType.fromAi`): un valor inesperado
+nunca rompe el análisis y siempre concuerda con el veredicto. `GET /api/ai/model` reúne la descripción del modelo y
+su evaluación; mientras la IA la calcula tras reiniciar, responde `evaluationReady: false`.
+
+El cliente usa **HTTP/1.1** a propósito: sobre `http://` (la red privada de Railway) el cliente HTTP de Java intenta
+pasar a HTTP/2 (h2c), uvicorn lo rechaza y descarta el cuerpo de la petición, y el análisis fallaba con 422.
 
 ## Variables de entorno
 

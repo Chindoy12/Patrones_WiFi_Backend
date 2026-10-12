@@ -9,6 +9,7 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
 import java.util.List;
+import java.util.Map;
 
 import static com.wifisense.TestData.*;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -21,8 +22,8 @@ class AnomalyDetectionStrategyTest {
     private final Network network = network(1, NetworkStatus.NORMAL);
 
     private static AiAnalysisResponse response(boolean detected, AiPrediction.Severity severity) {
-        return new AiAnalysisResponse(detected, 0.7, severity, "msg", null, "RULES", List.of(), 1, 2, List.of(),
-                "isolation-forest-1.0", true);
+        return new AiAnalysisResponse(detected, 0.7, severity, detected ? "CONGESTION" : "NONE", null, "msg", null,
+                "RULES", List.of(), Map.of(), 1, 2, List.of(), "isolation-forest-1.1", true);
     }
 
     @Test

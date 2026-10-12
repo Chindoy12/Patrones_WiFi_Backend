@@ -5,6 +5,7 @@ import com.wifisense.event.NetworkEventPublisher;
 import com.wifisense.event.NetworkStatusChangedEvent;
 import com.wifisense.model.AiPrediction;
 import com.wifisense.model.AnalysisResult;
+import com.wifisense.model.AnomalyType;
 import com.wifisense.model.Network;
 import com.wifisense.model.NetworkStatus;
 import com.wifisense.repository.*;
@@ -18,6 +19,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 import java.time.Clock;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import static com.wifisense.TestData.*;
@@ -73,8 +75,9 @@ class NetworkAnalysisFacadeTest {
 
     @Test
     void savesAiPredictionWhenTheStrategyUsedTheAiService() {
-        AiAnalysisResponse ai = new AiAnalysisResponse(true, 0.8, AiPrediction.Severity.HIGH, "msg", "rec",
-                "CLAUDE", List.of("latency"), 1, 1, List.of(), "isolation-forest-1.0", true);
+        AiAnalysisResponse ai = new AiAnalysisResponse(true, 0.8, AiPrediction.Severity.HIGH, "PROVIDER_ISSUE",
+                "Causa probable: falla del proveedor de internet.", "msg", "rec", "CLAUDE", List.of("latency"),
+                Map.of("latency", 4.2), 1, 1, List.of(), "isolation-forest-1.1", true);
         when(strategy.analyze(any())).thenReturn(new AnalysisOutcome(NetworkStatus.CRITICAL, 0.8, "msg", ai));
         when(predictions.save(any(AiPrediction.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
@@ -83,6 +86,7 @@ class NetworkAnalysisFacadeTest {
         assertThat(response.prediction()).isNotNull();
         assertThat(response.prediction().simulatedData()).isTrue();
         assertThat(response.prediction().recommendationSource()).isEqualTo("CLAUDE");
+        assertThat(response.prediction().anomalyType()).isEqualTo(AnomalyType.PROVIDER_ISSUE);
     }
 
     @Test

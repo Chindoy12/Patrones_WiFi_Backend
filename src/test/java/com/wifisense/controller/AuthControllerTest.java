@@ -4,6 +4,7 @@ import com.wifisense.dto.AuthResponse;
 import com.wifisense.dto.UserResponse;
 import com.wifisense.model.User;
 import com.wifisense.security.LoginBlockedException;
+import com.wifisense.security.PasswordCipher;
 import com.wifisense.security.RegistrationBlockedException;
 import com.wifisense.security.SecurityConfig;
 import com.wifisense.security.SecurityProperties;
@@ -27,6 +28,7 @@ import java.util.List;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -46,6 +48,19 @@ class AuthControllerTest {
     private UserService userService;
     @MockitoBean
     private UserDetailsService userDetailsService;
+    @MockitoBean
+    private PasswordCipher passwordCipher;
+
+    @Test
+    void anyoneCanGetAOneTimePasswordChallenge() throws Exception {
+        when(passwordCipher.issue()).thenReturn(new PasswordCipher.Challenge("c1", "PUBLIC-KEY",
+                Instant.parse("2026-10-11T00:02:00Z")));
+
+        mvc.perform(get("/api/auth/challenge"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.challengeId").value("c1"))
+                .andExpect(jsonPath("$.publicKey").value("PUBLIC-KEY"));
+    }
 
     @Test
     void wrongCredentialsGiveOneGenericSpanishMessage() throws Exception {

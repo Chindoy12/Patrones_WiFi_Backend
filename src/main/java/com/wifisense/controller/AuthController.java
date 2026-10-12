@@ -4,6 +4,7 @@ import com.wifisense.dto.AuthResponse;
 import com.wifisense.dto.LoginRequest;
 import com.wifisense.dto.RegisterRequest;
 import com.wifisense.dto.UserResponse;
+import com.wifisense.security.PasswordCipher;
 import com.wifisense.service.AuthService;
 import com.wifisense.service.UserService;
 import jakarta.servlet.http.HttpServletRequest;
@@ -18,10 +19,18 @@ public class AuthController {
 
     private final AuthService authService;
     private final UserService userService;
+    private final PasswordCipher cipher;
 
-    public AuthController(AuthService authService, UserService userService) {
+    public AuthController(AuthService authService, UserService userService, PasswordCipher cipher) {
         this.authService = authService;
         this.userService = userService;
+        this.cipher = cipher;
+    }
+
+    /** One-time public key the browser uses to seal the password before sending it. */
+    @GetMapping("/challenge")
+    public PasswordCipher.Challenge challenge() {
+        return cipher.issue();
     }
 
     @PostMapping("/login")

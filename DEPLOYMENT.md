@@ -16,7 +16,7 @@ Usuario ─► Frontend (Vercel) ─► Backend (contenedor) ─► PostgreSQL a
 2. **Configure backend environment variables.** `DATABASE_URL` (formato `jdbc:postgresql://host:5432/db?sslmode=require`),
    `DATABASE_USERNAME`, `DATABASE_PASSWORD`, `JWT_SECRET` (32+ caracteres aleatorios), `AI_API_KEY`,
    `CORS_ALLOWED_ORIGINS` (la URL de Vercel), `ADMIN_USERNAME` y `ADMIN_PASSWORD` (cuenta de administrador).
-3. **Deploy Backend.** Crea un servicio Docker desde `WiFiSense-backend` (usa su `Dockerfile`, basado en Java 25 LTS). Puerto `8080`
+3. **Deploy Backend.** Crea un servicio Docker desde `WiFiSense-backend` (usa su `Dockerfile`: compila con Maven y corre en Java 21 LTS). Puerto `8080`
    o la variable `PORT` de la plataforma. Health check: `/actuator/health`.
 4. **Deploy AI service.** Crea un servicio Docker desde `WiFiSense-ai`. Variables: `AI_API_KEY` (la misma del
    backend) y opcionalmente `AI_MODEL_PATH`. Health check: `/health`. Si la plataforma lo permite, déjalo en red
@@ -32,7 +32,12 @@ Usuario ─► Frontend (Vercel) ─► Backend (contenedor) ─► PostgreSQL a
 10. **Test Backend → AI.** En Análisis ejecuta “Inteligencia artificial”. Un 503 indica `AI_SERVICE_URL` o
     `AI_API_KEY` incorrectos; revisa los logs del backend.
 
+11. **Test Agent → Backend.** En Mi Wi-Fi crea la clave del agente, ejecuta `python wifisense_agent.py setup` y
+    `run --once` en un computador de la casa: debe imprimir `Enviado.` y la página mostrar los equipos conectados.
+    Un 401 es una clave mal copiada o revocada; un 500 suele ser que faltan las migraciones V17–V19.
+
 ## Comprobación de secretos
 
 Ningún repositorio contiene `.env`. Las variables reales viven solo en el panel de cada plataforma. El frontend
-solo conoce `VITE_API_URL`, que es pública por naturaleza.
+solo conoce `VITE_API_URL`, que es pública por naturaleza. Las claves del agente se guardan solo en el computador del
+usuario; la base de datos tiene únicamente su SHA-256.

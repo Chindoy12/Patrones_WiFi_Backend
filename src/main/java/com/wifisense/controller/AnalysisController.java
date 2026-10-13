@@ -4,6 +4,7 @@ import com.wifisense.analysis.NetworkAnalysisFacade;
 import com.wifisense.dto.AiPredictionResponse;
 import com.wifisense.dto.AnalysisRequest;
 import com.wifisense.dto.AnalysisResultResponse;
+import com.wifisense.dto.AnomalyCauseCount;
 import com.wifisense.dto.StrategyResponse;
 import com.wifisense.service.AnalysisHistoryService;
 import jakarta.validation.Valid;
@@ -46,5 +47,10 @@ public class AnalysisController {
     @GetMapping("/anomalies")
     public List<AiPredictionResponse> anomalies(@RequestParam(defaultValue = "50") int limit) {
         return historyService.anomalies(limit);
+    }
+
+    @GetMapping("/anomalies/causes")
+    public List<AnomalyCauseCount> anomalyCauses(@RequestParam(defaultValue = "30") int days) {
+        return historyService.anomalyCauses(days);
     }
 }

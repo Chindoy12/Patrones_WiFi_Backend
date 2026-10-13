@@ -18,6 +18,9 @@ public interface AiAnalysisClient {
     /** 0-100 quality of one connection test or measurement, with activities and tips. */
     JsonNode qualityScore(AiQualityRequest request);
 
+    /** 0-100 security audit of a home network from what the agent saw, with findings and actions. */
+    JsonNode securityAssess(AiSecurityRequest request);
+
     /** True when the AI service answers its health check; never throws. */
     boolean isHealthy();
 }

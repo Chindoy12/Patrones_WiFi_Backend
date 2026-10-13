@@ -10,6 +10,7 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -46,6 +47,10 @@ class HttpAiAnalysisClientTest {
         server.createContext("/api/v1/quality/score", exchange -> {
             detectBody.set(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
             reply(exchange, 200, "{\"score\":77,\"grade\":\"GOOD\"}");
+        });
+        server.createContext("/api/v1/security/assess", exchange -> {
+            detectBody.set(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+            reply(exchange, 200, "{\"score\":60,\"grade\":\"AT_RISK\",\"findings\":[{\"code\":\"PORT_TELNET\"}]}");
         });
         server.createContext("/health", exchange -> reply(exchange, 200, "{\"status\":\"UP\"}"));
         server.createContext("/api/v1/model", exchange ->
@@ -105,6 +110,16 @@ class HttpAiAnalysisClientTest {
         assertThat(quality.get("score").asInt()).isEqualTo(77);
         assertThat(detectBody.get()).contains("\"latencyMs\":30.0").contains("\"contractedMbps\":200.0")
                 .contains("\"packetLossPct\":null");
+    }
+
+    @Test
+    void securityAssessSendsWhatTheAgentSaw() {
+        var security = client(url()).securityAssess(new AiSecurityRequest("WPA2", "CCMP", List.of(23, 443), 6, 1, "5",
+                36, 2));
+
+        assertThat(security.get("grade").asText()).isEqualTo("AT_RISK");
+        assertThat(detectBody.get()).contains("\"authentication\":\"WPA2\"").contains("\"openPorts\":[23,443]")
+                .contains("\"newDeviceCount\":1");
     }
 
     @Test

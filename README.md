@@ -59,6 +59,9 @@ o VIEWER. Para un usuario final (`USER`) las rutas del equipo responden **404**,
 | GET | `/api/my/speedtest/ping`, `/api/my/speedtest/download?bytes=` | USER: latencia y bajada de la prueba de conexión |
 | POST | `/api/my/speedtest/upload` (`application/octet-stream`) | USER: subida de la prueba (se lee y se descarta) |
 | GET / POST | `/api/my/networks/{id}/tests` `{"latencyMs","jitterMs","downloadMbps","uploadMbps"}` | USER: historial y resultado calificado por la IA |
+| GET | `/api/my/networks/{id}/agent` | USER: último reporte del agente, historial, equipos conectados y auditoría de seguridad |
+| POST / DELETE | `/api/my/networks/{id}/agent/key` | USER: crea (la clave se muestra una sola vez, `Cache-Control: no-store`) o revoca la clave del agente |
+| POST | `/api/agent/reports` (cabecera `X-Agent-Key`) | Agente WiFiSense: sin sesión; la clave decide la red. 201, 401 o 429 con `Retry-After` |
 | GET / POST / PATCH / DELETE | `/api/users`, `/api/users/{id}/role`, `/api/users/{id}` | ADMIN (solo cuentas del equipo, máximo 3) |
 | GET / POST | `/api/locations`, `/api/locations/{id}/zones`, `/api/zones` | GET equipo · POST ADMIN |
 | GET / POST / PUT / DELETE | `/api/networks[/{id}]` | GET equipo · resto ADMIN |
@@ -97,6 +100,13 @@ Errores: `application/problem+json` con `detail` y, en validación, `errors` por
   10 minutos (`SpeedTestThrottle`, `wifisense.speedtest.*`); al pasarlo recibe 429 con un mensaje en español. Los
   valores que envía el navegador se validan con los mismos rangos que la base de datos. Si la IA no responde, la
   prueba se guarda igual, sin calificación.
+- **Agente WiFiSense.** El agente de la casa no tiene sesión: se identifica con una clave de 256 bits (`wsa_…`) que
+  solo se muestra al crearla; en la base se guarda su SHA-256 (`AgentKeyService`). Una clave mal formada, inexistente
+  o revocada responde siempre el mismo 401. La clave decide la red del reporte (el cuerpo nunca lo dice), cada clave
+  puede reportar como máximo una vez cada 50 s (`AgentReportThrottle`, 429 con `Retry-After`) y cada campo se valida
+  con los mismos rangos que la base. Las MAC nunca llegan: solo huellas con sal. Los reportes y equipos de más de 30
+  días se borran cada noche (`AgentRetentionJob`). Las llamadas a la IA se hacen fuera de la transacción y, si la IA
+  no responde, el reporte se guarda sin veredictos.
 - **Registro limitado:** máximo 5 cuentas por hora desde una misma dirección (`RegistrationThrottle`).
 - **Contraseña cifrada en el navegador (además de HTTPS).** La web pide un reto de un solo uso
   (`GET /api/auth/challenge`: id + llave pública RSA) y envía `{challengeId, encryptedPassword}` cifrado con RSA-OAEP
@@ -174,7 +184,7 @@ No hay usuarios de demostración. Al arrancar se crea (o actualiza) el administr
 
 `src/test/java` (convención Maven): fuentes de datos y decoradores, transiciones de estado, las tres estrategias,
 la fachada con mocks, observadores, ciclo de vida de alertas y un `@WebMvcTest` que verifica seguridad por rol,
-validación y errores 404.
+validación y errores 404, y el agente (claves, límite de reportes, equipos nuevos, IA caída).
 
 ## Pendiente (≈20 %)
 

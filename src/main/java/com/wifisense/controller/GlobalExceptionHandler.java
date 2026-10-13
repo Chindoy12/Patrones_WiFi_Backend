@@ -8,7 +8,9 @@ import com.wifisense.security.BodyTooLargeException;
 import com.wifisense.security.InvalidEncryptedPasswordException;
 import com.wifisense.security.LoginBlockedException;
 import com.wifisense.security.RegistrationBlockedException;
+import com.wifisense.service.AgentReportLimitException;
 import com.wifisense.service.DuplicateResourceException;
+import com.wifisense.service.InvalidAgentKeyException;
 import com.wifisense.service.InvalidAccountException;
 import com.wifisense.service.ResourceNotFoundException;
 import com.wifisense.service.UserLimitException;
@@ -16,7 +18,9 @@ import com.wifisense.speedtest.SpeedTestLimitException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.ErrorResponse;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -97,6 +101,18 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(SpeedTestLimitException.class)
     ProblemDetail tooManyTests(SpeedTestLimitException e) {
         return problem(HttpStatus.TOO_MANY_REQUESTS, e.getMessage());
+    }
+
+    @ExceptionHandler(InvalidAgentKeyException.class)
+    ProblemDetail invalidAgentKey(InvalidAgentKeyException e) {
+        return problem(HttpStatus.UNAUTHORIZED, e.getMessage());
+    }
+
+    @ExceptionHandler(AgentReportLimitException.class)
+    ResponseEntity<ProblemDetail> agentTooFast(AgentReportLimitException e) {
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                .header(HttpHeaders.RETRY_AFTER, String.valueOf(e.getRetryAfterSeconds()))
+                .body(problem(HttpStatus.TOO_MANY_REQUESTS, e.getMessage()));
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)

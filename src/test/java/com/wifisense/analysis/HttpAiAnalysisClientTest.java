@@ -43,6 +43,11 @@ class HttpAiAnalysisClientTest {
                      "featureDeviations":{"latency":4.1},"anomalousSamples":1,"sampleSize":1,"imputedFeatures":[],
                      "modelVersion":"isolation-forest-1.1","simulatedData":true,"futureField":"ignored"}""");
         });
+        server.createContext("/api/v1/quality/score", exchange -> {
+            detectBody.set(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+            reply(exchange, 200, "{\"score\":77,\"grade\":\"GOOD\"}");
+        });
+        server.createContext("/health", exchange -> reply(exchange, 200, "{\"status\":\"UP\"}"));
         server.createContext("/api/v1/model", exchange ->
                 reply(exchange, 200, "{\"algorithm\":\"IsolationForest\",\"modelVersion\":\"isolation-forest-1.1\"}"));
         server.start();
@@ -91,6 +96,23 @@ class HttpAiAnalysisClientTest {
         assertThat(detectBody.get()).contains("\"networkId\":3").contains("\"latency\":20.0");
         assertThat(response.anomalyType()).isEqualTo("CONGESTION");
         assertThat(response.featureDeviations()).containsEntry("latency", 4.1);
+    }
+
+    @Test
+    void qualityScoreSendsOnlyMeasuredMetrics() {
+        var quality = client(url()).qualityScore(new AiQualityRequest(30, 5, null, 120.0, 20.0, 200.0, null));
+
+        assertThat(quality.get("score").asInt()).isEqualTo(77);
+        assertThat(detectBody.get()).contains("\"latencyMs\":30.0").contains("\"contractedMbps\":200.0")
+                .contains("\"packetLossPct\":null");
+    }
+
+    @Test
+    void healthCheckNeverThrows() {
+        assertThat(client(url()).isHealthy()).isTrue();
+        String closed = url();
+        server.stop(0);
+        assertThat(client(closed).isHealthy()).isFalse();
     }
 
     @Test

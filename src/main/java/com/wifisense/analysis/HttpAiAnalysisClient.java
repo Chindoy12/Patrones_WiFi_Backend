@@ -18,6 +18,8 @@ public class HttpAiAnalysisClient implements AiAnalysisClient {
     private static final String DETECT_PATH = "/api/v1/anomalies/detect";
     private static final String MODEL_PATH = "/api/v1/model";
     private static final String EVALUATION_PATH = "/api/v1/model/evaluation";
+    private static final String QUALITY_PATH = "/api/v1/quality/score";
+    private static final String HEALTH_PATH = "/health";
 
     private final RestClient restClient;
 
@@ -73,6 +75,30 @@ public class HttpAiAnalysisClient implements AiAnalysisClient {
             return Optional.empty();  // still being computed after the AI service started
         } catch (RestClientException e) {
             throw new AiServiceUnavailableException("Falló la consulta de la evaluación del modelo: " + e.getMessage(), e);
+        }
+    }
+
+    @Override
+    public JsonNode qualityScore(AiQualityRequest request) {
+        try {
+            return restClient.post()
+                    .uri(QUALITY_PATH)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(request)
+                    .retrieve()
+                    .body(JsonNode.class);
+        } catch (RestClientException e) {
+            throw new AiServiceUnavailableException("Falló la calificación de calidad: " + e.getMessage(), e);
+        }
+    }
+
+    @Override
+    public boolean isHealthy() {
+        try {
+            JsonNode health = restClient.get().uri(HEALTH_PATH).retrieve().body(JsonNode.class);
+            return health != null && "UP".equals(health.path("status").asText());
+        } catch (RestClientException e) {
+            return false;
         }
     }
 }

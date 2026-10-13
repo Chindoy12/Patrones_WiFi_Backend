@@ -14,4 +14,10 @@ public interface AiAnalysisClient {
 
     /** Comparison of algorithms; empty while the AI service is still computing it after a restart. */
     Optional<JsonNode> modelEvaluation();
+
+    /** 0-100 quality of one connection test or measurement, with activities and tips. */
+    JsonNode qualityScore(AiQualityRequest request);
+
+    /** True when the AI service answers its health check; never throws. */
+    boolean isHealthy();
 }

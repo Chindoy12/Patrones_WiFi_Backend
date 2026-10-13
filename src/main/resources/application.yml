@@ -50,6 +50,12 @@ wifisense:
     transfers-per-window: 20
     tests-per-window: 6
     window: 10m
+  agent:  # WiFiSense agent of the end users (Mi Wi-Fi > Agente)
+    min-interval: 50s     # the agent reports every 5 min; faster reports are rejected with 429
+    retention: 30d        # older reports and devices are deleted every night
+    online-window: 15m
+    analysis-window: 20   # reports the anomaly detection receives as context
+    history-size: 48
   data-sources:
     simulation:
       anomaly-probability: 0.1

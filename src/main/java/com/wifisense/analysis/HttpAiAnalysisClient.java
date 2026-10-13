@@ -19,6 +19,7 @@ public class HttpAiAnalysisClient implements AiAnalysisClient {
     private static final String MODEL_PATH = "/api/v1/model";
     private static final String EVALUATION_PATH = "/api/v1/model/evaluation";
     private static final String QUALITY_PATH = "/api/v1/quality/score";
+    private static final String SECURITY_PATH = "/api/v1/security/assess";
     private static final String HEALTH_PATH = "/health";
 
     private final RestClient restClient;
@@ -89,6 +90,20 @@ public class HttpAiAnalysisClient implements AiAnalysisClient {
                     .body(JsonNode.class);
         } catch (RestClientException e) {
             throw new AiServiceUnavailableException("Falló la calificación de calidad: " + e.getMessage(), e);
+        }
+    }
+
+    @Override
+    public JsonNode securityAssess(AiSecurityRequest request) {
+        try {
+            return restClient.post()
+                    .uri(SECURITY_PATH)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(request)
+                    .retrieve()
+                    .body(JsonNode.class);
+        } catch (RestClientException e) {
+            throw new AiServiceUnavailableException("Falló la auditoría de seguridad: " + e.getMessage(), e);
         }
     }
 

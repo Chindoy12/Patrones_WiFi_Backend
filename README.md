@@ -56,6 +56,9 @@ o VIEWER. Para un usuario final (`USER`) las rutas del equipo responden **404**,
 | POST | `/api/auth/register` `{"username","password"}` | público: crea un usuario final (`USER`) y devuelve su token |
 | GET | `/api/auth/me` | cualquier cuenta |
 | GET / POST / PUT / DELETE | `/api/my/networks[/{id}]` `{"name","provider","contractedMbps"}` | USER: solo sus propias redes (máximo 3) |
+| GET | `/api/my/speedtest/ping`, `/api/my/speedtest/download?bytes=` | USER: latencia y bajada de la prueba de conexión |
+| POST | `/api/my/speedtest/upload` (`application/octet-stream`) | USER: subida de la prueba (se lee y se descarta) |
+| GET / POST | `/api/my/networks/{id}/tests` `{"latencyMs","jitterMs","downloadMbps","uploadMbps"}` | USER: historial y resultado calificado por la IA |
 | GET / POST / PATCH / DELETE | `/api/users`, `/api/users/{id}/role`, `/api/users/{id}` | ADMIN (solo cuentas del equipo, máximo 3) |
 | GET / POST | `/api/locations`, `/api/locations/{id}/zones`, `/api/zones` | GET equipo · POST ADMIN |
 | GET / POST / PUT / DELETE | `/api/networks[/{id}]` | GET equipo · resto ADMIN |
@@ -69,6 +72,8 @@ o VIEWER. Para un usuario final (`USER`) las rutas del equipo responden **404**,
 | GET | `/api/ai/model` | equipo: modelo en producción y comparación con LOF y One-Class SVM |
 | GET / PATCH | `/api/alerts?status`, `/api/alerts/{id}/acknowledge`, `/api/alerts/{id}/resolve` | GET equipo · PATCH ADMIN, ANALYST |
 | GET | `/api/dashboard/summary` | equipo |
+| GET | `/api/dashboard/status` | equipo: estado de la IA, la base de datos, el monitoreo y alertas abiertas |
+| GET | `/api/networks/{id}/quality` | equipo: calidad 0–100 de la última medición, calificada por la IA |
 | GET | `/api/observability/data-sources`, `/api/observability/activity` | ADMIN |
 | GET | `/api/reports/networks/{id}?from&to`, `/api/reports/comparison?networkIds=1,2` | equipo |
 | GET | `/actuator/health` | público |
@@ -87,6 +92,11 @@ Errores: `application/problem+json` con `detail` y, en validación, `errors` por
   sale del token, nunca del cuerpo ni de la URL: pedir o modificar la red de otra persona responde 404, igual que una
   red inexistente (`HomeNetworkService`). Máximo 3 redes por usuario, nombre único por dueño (también en la base de
   datos) y validación de cada campo con mensajes en español.
+- **Prueba de conexión acotada.** Cada byte descargado sale del servidor y se cobra como tráfico, así que la bajada y
+  la subida tienen un máximo de 8 MB y cada usuario tiene un cupo de 20 transferencias y 6 pruebas guardadas cada
+  10 minutos (`SpeedTestThrottle`, `wifisense.speedtest.*`); al pasarlo recibe 429 con un mensaje en español. Los
+  valores que envía el navegador se validan con los mismos rangos que la base de datos. Si la IA no responde, la
+  prueba se guarda igual, sin calificación.
 - **Registro limitado:** máximo 5 cuentas por hora desde una misma dirección (`RegistrationThrottle`).
 - **Contraseña cifrada en el navegador (además de HTTPS).** La web pide un reto de un solo uso
   (`GET /api/auth/challenge`: id + llave pública RSA) y envía `{challengeId, encryptedPassword}` cifrado con RSA-OAEP
@@ -99,7 +109,9 @@ Errores: `application/problem+json` con `detail` y, en validación, `errors` por
 - **Login:** cualquier fallo responde lo mismo, `Datos incorrectos.`; entradas fuera de los límites se rechazan sin
   consultar la base de datos. Tras 5 fallos del mismo usuario y dirección (o 20 de una misma dirección) se bloquea
   10 minutos (`LoginAttemptService`).
-- **Tamaño de solicitudes:** cuerpos de más de 16 KB se rechazan con 413 (`RequestSizeLimitFilter`).
+- **Tamaño de solicitudes:** cuerpos de más de 16 KB se rechazan con 413 (`RequestSizeLimitFilter`), también cuando
+  llegan por partes sin `Content-Length`: el cuerpo se cuenta mientras se lee (`LimitedBodyRequest`). Solo la subida
+  de la prueba de conexión acepta hasta 8 MB.
 - **Errores:** mensajes en español, sin trazas ni detalles internos (`GlobalExceptionHandler`).
 - **Secretos:** solo en variables de entorno de la plataforma; nunca en el repositorio ni en el frontend.
 

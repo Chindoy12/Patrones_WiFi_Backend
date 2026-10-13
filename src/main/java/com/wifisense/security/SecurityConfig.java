@@ -48,6 +48,8 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST, "/api/auth/login", "/api/auth/register").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/auth/challenge").permitAll()
                         .requestMatchers("/actuator/health").permitAll()
+                        // The agent has no session: AgentReportService checks its own key (X-Agent-Key).
+                        .requestMatchers(HttpMethod.POST, "/api/agent/reports").permitAll()
                         .requestMatchers("/api/auth/me").authenticated()
                         .requestMatchers("/api/my/**").hasRole(END_USER)
                         .requestMatchers("/api/users/**", "/api/observability/**").hasRole(ADMIN)

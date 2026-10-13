@@ -4,6 +4,7 @@ import com.wifisense.analysis.AiServiceUnavailableException;
 import com.wifisense.analysis.InsufficientDataException;
 import com.wifisense.network.DataSourceUnavailableException;
 import com.wifisense.network.decorator.InvalidSnapshotException;
+import com.wifisense.security.BodyTooLargeException;
 import com.wifisense.security.InvalidEncryptedPasswordException;
 import com.wifisense.security.LoginBlockedException;
 import com.wifisense.security.RegistrationBlockedException;
@@ -11,6 +12,7 @@ import com.wifisense.service.DuplicateResourceException;
 import com.wifisense.service.InvalidAccountException;
 import com.wifisense.service.ResourceNotFoundException;
 import com.wifisense.service.UserLimitException;
+import com.wifisense.speedtest.SpeedTestLimitException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -79,7 +81,22 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler({MethodArgumentTypeMismatchException.class, HttpMessageNotReadableException.class})
     ProblemDetail unreadable(Exception e) {
+        for (Throwable cause = e; cause != null; cause = cause.getCause()) {
+            if (cause instanceof BodyTooLargeException) {
+                return problem(HttpStatus.PAYLOAD_TOO_LARGE, "La solicitud es demasiado grande.");
+            }
+        }
         return problem(HttpStatus.BAD_REQUEST, "La solicitud no tiene un formato válido.");
+    }
+
+    @ExceptionHandler(BodyTooLargeException.class)
+    ProblemDetail tooLarge(BodyTooLargeException e) {
+        return problem(HttpStatus.PAYLOAD_TOO_LARGE, "La solicitud es demasiado grande.");
+    }
+
+    @ExceptionHandler(SpeedTestLimitException.class)
+    ProblemDetail tooManyTests(SpeedTestLimitException e) {
+        return problem(HttpStatus.TOO_MANY_REQUESTS, e.getMessage());
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)

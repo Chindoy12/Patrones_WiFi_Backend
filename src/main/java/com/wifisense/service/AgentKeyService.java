@@ -1,0 +1,84 @@
+package com.wifisense.service;
+
+import com.wifisense.dto.AgentKeyCreated;
+import com.wifisense.model.AgentKey;
+import com.wifisense.model.HomeNetwork;
+import com.wifisense.repository.AgentKeyRepository;
+import com.wifisense.repository.HomeNetworkRepository;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.security.SecureRandom;
+import java.util.Base64;
+import java.util.HexFormat;
+import java.util.regex.Pattern;
+
+/**
+ * Keys of the agent. A key is 256 random bits ("wsa_" + base64url); only its SHA-256 is stored, the same way a
+ * password would be, except that a key this long does not need a slow hash: it cannot be guessed.
+ */
+@Service
+public class AgentKeyService {
+
+    static final String PREFIX = "wsa_";
+    private static final Pattern FORMAT = Pattern.compile("^wsa_[A-Za-z0-9_-]{43}$");
+    private static final int VISIBLE_CHARS = 8;
+
+    private final AgentKeyRepository keys;
+    private final HomeNetworkRepository networks;
+    private final AgentReportThrottle throttle;
+    private final SecureRandom random = new SecureRandom();
+
+    public AgentKeyService(AgentKeyRepository keys, HomeNetworkRepository networks, AgentReportThrottle throttle) {
+        this.keys = keys;
+        this.networks = networks;
+        this.throttle = throttle;
+    }
+
+    /** Creates the key of a network, replacing (and so revoking) the previous one. */
+    @Transactional
+    public AgentKeyCreated create(String username, Long networkId) {
+        ownNetwork(username, networkId);
+        keys.findByNetworkId(networkId).ifPresent(old -> throttle.forget(old.getId()));
+        keys.deleteByNetworkId(networkId);  // clears the persistence context, so the network is referenced again below
+        HomeNetwork network = networks.getReferenceById(networkId);
+        byte[] secret = new byte[32];
+        random.nextBytes(secret);
+        String key = PREFIX + Base64.getUrlEncoder().withoutPadding().encodeToString(secret);
+        AgentKey saved = keys.saveAndFlush(new AgentKey(network, hash(key), key.substring(0, VISIBLE_CHARS)));
+        return new AgentKeyCreated(key, saved.getKeyPrefix(), saved.getCreatedAt());
+    }
+
+    @Transactional
+    public void revoke(String username, Long networkId) {
+        ownNetwork(username, networkId);
+        keys.findByNetworkId(networkId).ifPresent(old -> throttle.forget(old.getId()));
+        keys.deleteByNetworkId(networkId);
+    }
+
+    /** The key of the agent that sent a report; malformed, unknown and revoked keys fail the same way. */
+    @Transactional(readOnly = true)
+    public AgentKey authenticate(String key) {
+        if (key == null || !FORMAT.matcher(key).matches()) {
+            throw new InvalidAgentKeyException();
+        }
+        return keys.findByKeyHash(hash(key)).orElseThrow(InvalidAgentKeyException::new);
+    }
+
+    private HomeNetwork ownNetwork(String username, Long networkId) {
+        return networks.findByIdAndOwner_Username(networkId, username)
+                .orElseThrow(() -> new ResourceNotFoundException("la red", networkId));
+    }
+
+    static String hash(String key) {
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256").digest(key.getBytes(StandardCharsets.UTF_8));
+            return HexFormat.of().formatHex(digest);
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 no disponible", e);
+        }
+    }
+}

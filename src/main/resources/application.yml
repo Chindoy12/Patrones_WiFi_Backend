@@ -44,6 +44,12 @@ wifisense:
     tick: PT30S
   analysis:
     window-size: 50
+  speedtest:  # connection test of Mi Wi-Fi; downloads are billed as egress, so keep them small
+    max-download: 8MB
+    max-upload: 8MB
+    transfers-per-window: 20
+    tests-per-window: 6
+    window: 10m
   data-sources:
     simulation:
       anomaly-probability: 0.1

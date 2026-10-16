@@ -42,6 +42,14 @@ public class AgentKeyService {
     @Transactional
     public AgentKeyCreated create(String username, Long networkId) {
         ownNetwork(username, networkId);
+        return issue(networkId);
+    }
+
+    /**
+     * New key for a network whose ownership was already checked (by the owner's session, or by a pairing code the
+     * owner created). Must run inside a transaction.
+     */
+    AgentKeyCreated issue(Long networkId) {
         keys.findByNetworkId(networkId).ifPresent(old -> throttle.forget(old.getId()));
         keys.deleteByNetworkId(networkId);  // clears the persistence context, so the network is referenced again below
         HomeNetwork network = networks.getReferenceById(networkId);

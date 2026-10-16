@@ -47,8 +47,9 @@ class AgentReportServiceTest {
     private final AgentDeviceRepository devices = mock(AgentDeviceRepository.class);
     private final HomeNetworkRepository networks = mock(HomeNetworkRepository.class);
     private final AiAnalysisClient ai = mock(AiAnalysisClient.class);
+    private final AgentAlertService alerts = mock(AgentAlertService.class);
     private final AgentReportService service = new AgentReportService(keyService, throttle, keys, reports, devices,
-            networks, ai, new TransactionTemplate(mock(PlatformTransactionManager.class)),
+            networks, ai, alerts, new TransactionTemplate(mock(PlatformTransactionManager.class)),
             new AgentProperties(Duration.ofSeconds(50), Duration.ofDays(30), Duration.ofMinutes(15), 20, 48), JSON,
             Clock.fixed(NOW, ZoneOffset.UTC));
     private final HomeNetwork casa = new HomeNetwork(mock(User.class), "Casa", null, null);
@@ -74,7 +75,7 @@ class AgentReportServiceTest {
 
     private static AgentReportRequest request(List<String> hashes, Double loss) {
         return new AgentReportRequest("1.0.0", "Windows", "Casa", "WPA2", "CCMP", "5", 44, -58, 84, 433.3, 390.0, 2,
-                9, null, 21.5, 2.0, loss, 3.1, hashes.size(), hashes, List.of(443, 80, 80));
+                9, null, 21.5, 2.0, loss, 3.1, hashes.size(), hashes, null, List.of(443, 80, 80));
     }
 
     private static AiAnalysisResponse anomaly(boolean detected, String type) {
@@ -198,5 +199,64 @@ class AgentReportServiceTest {
         assertThatThrownBy(() -> service.receive(KEY, request(List.of(PHONE), 0.0)))
                 .isInstanceOf(AgentReportLimitException.class);
         verifyNoInteractions(ai, reports, devices);
+    }
+
+    @Test
+    void storesTheMakerAndNameOfANewDeviceFromTheReport() {
+        when(devices.existsByNetworkId(7L)).thenReturn(true);
+        when(devices.findByNetworkIdOrderByFirstSeenAtAsc(7L)).thenReturn(List.of());
+        AgentReportRequest request = new AgentReportRequest("1.2.0", "Windows", "Casa", "WPA2", "CCMP", "5", 44, -58,
+                84, null, null, null, null, null, 20.0, 2.0, 0.0, null, 1,
+                null, List.of(new AgentReportRequest.DeviceInfo(PHONE, "Apple", "iPhone-de-Ana")), List.of());
+
+        service.receive(KEY, request);
+
+        ArgumentCaptor<AgentDevice> stored = ArgumentCaptor.forClass(AgentDevice.class);
+        verify(devices).save(stored.capture());
+        assertThat(stored.getValue().getVendor()).isEqualTo("Apple");
+        assertThat(stored.getValue().getHostname()).isEqualTo("iPhone-de-Ana");
+        assertThat(stored.getValue().getFingerprint()).isEqualTo(PHONE);
+    }
+
+    @Test
+    void aLongCipherIsTrimmedInsteadOfRejectedAndRaisesNoError() {
+        ArgumentCaptor<AiSecurityRequest> security = ArgumentCaptor.forClass(AiSecurityRequest.class);
+        AgentReportRequest request = new AgentReportRequest("1.2.0", "Windows", "Casa", "WPA2",
+                "CCMP (TKIP) y un texto larguísimo que no cabe", "5", 44, -58, 84, null, null, null, null, null,
+                20.0, 2.0, 0.0, null, 1, List.of(PHONE), null, List.of());
+
+        service.receive(KEY, request);
+
+        verify(ai).securityAssess(security.capture());
+        assertThat(security.getValue().cipher()).hasSize(20);
+    }
+
+    @Test
+    void raisesAlertsForNewDevicesAndAnomalies() {
+        when(devices.existsByNetworkId(7L)).thenReturn(true);
+        when(devices.findByNetworkIdOrderByFirstSeenAtAsc(7L)).thenReturn(List.of());
+        when(ai.detectAnomalies(any())).thenReturn(anomaly(true, "CONGESTION"));
+
+        service.receive(KEY, request(List.of(PHONE, LAPTOP), 0.0));
+
+        ArgumentCaptor<List<AgentAlertService.Signal>> raised = ArgumentCaptor.forClass(List.class);
+        verify(alerts).process(eq(7L), raised.capture());
+        assertThat(raised.getValue()).extracting(AgentAlertService.Signal::type)
+                .contains(com.wifisense.model.AlertType.NEW_DEVICE, com.wifisense.model.AlertType.ANOMALY);
+    }
+
+    @Test
+    void anUnauthorizedDeviceStillPresentRaisesAnAlert() {
+        AgentDevice blocked = new AgentDevice(7L, PHONE, NOW.minusSeconds(3600));
+        blocked.setAuthorized(false);
+        when(devices.existsByNetworkId(7L)).thenReturn(true);
+        when(devices.findByNetworkIdOrderByFirstSeenAtAsc(7L)).thenReturn(List.of(blocked));
+
+        service.receive(KEY, request(List.of(PHONE), 0.0));
+
+        ArgumentCaptor<List<AgentAlertService.Signal>> raised = ArgumentCaptor.forClass(List.class);
+        verify(alerts).process(eq(7L), raised.capture());
+        assertThat(raised.getValue()).extracting(AgentAlertService.Signal::type)
+                .contains(com.wifisense.model.AlertType.UNAUTHORIZED_DEVICE);
     }
 }

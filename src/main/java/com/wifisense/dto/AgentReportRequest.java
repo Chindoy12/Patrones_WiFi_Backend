@@ -1,5 +1,6 @@
 package com.wifisense.dto;
 
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.*;
 
 import java.util.List;
@@ -16,7 +17,8 @@ public record AgentReportRequest(
         @Size(max = 64, message = "El nombre de la red es demasiado largo.") String ssid,
         @Pattern(regexp = "^(OPEN|WEP|WPA|WPA2|WPA3|UNKNOWN)$", message = "Tipo de seguridad desconocido.")
         String authentication,
-        @Size(max = 20) String cipher,
+        // No size limit: some systems describe the cipher with a long text. It is trimmed (cipherForAi), not rejected.
+        String cipher,
         @Pattern(regexp = "^(2\\.4|5|6)$", message = "Banda desconocida.") String band,
         @Min(1) @Max(233) Integer channel,
         @Min(value = -100, message = "La señal debe estar entre -100 y 0 dBm.")
@@ -34,10 +36,59 @@ public record AgentReportRequest(
         @NotNull(message = "Falta la cantidad de equipos.") @Min(0) @Max(1024) Integer deviceCount,
         @Size(max = 256, message = "Demasiados equipos en un reporte.")
         List<@NotNull @Pattern(regexp = "^[0-9a-f]{24}$", message = "Huella de equipo inválida.") String> deviceHashes,
+        @Size(max = 256, message = "Demasiados equipos en un reporte.") @Valid List<DeviceInfo> devices,
         @Size(max = 64) List<@NotNull @Min(1) @Max(65535) Integer> openPorts) {
 
+    /**
+     * One connected device: its fingerprint and, when the agent could read them, the maker and the name the device
+     * announces on the network (never the MAC).
+     */
+    public record DeviceInfo(
+            @NotNull @Pattern(regexp = "^[0-9a-f]{24}$", message = "Huella de equipo inválida.") String id,
+            @Size(max = 40) String vendor,
+            @Size(max = 63) String name) {
+    }
+
+    /** All fingerprints, taking them from {@code devices} (new agent) or {@code deviceHashes} (old agent). */
     public List<String> deviceHashesOrEmpty() {
+        if (devices != null && !devices.isEmpty()) {
+            return devices.stream().map(DeviceInfo::id).toList();
+        }
         return deviceHashes == null ? List.of() : deviceHashes;
+    }
+
+    /** Maker per fingerprint, blank for the old agent that did not send it. */
+    public java.util.Map<String, String> vendorsByFingerprint() {
+        return fieldByFingerprint(DeviceInfo::vendor);
+    }
+
+    /** Announced name per fingerprint, blank for the old agent that did not send it. */
+    public java.util.Map<String, String> namesByFingerprint() {
+        return fieldByFingerprint(DeviceInfo::name);
+    }
+
+    private java.util.Map<String, String> fieldByFingerprint(
+            java.util.function.Function<DeviceInfo, String> field) {
+        if (devices == null) {
+            return java.util.Map.of();
+        }
+        java.util.Map<String, String> byId = new java.util.LinkedHashMap<>();
+        for (DeviceInfo device : devices) {
+            String value = field.apply(device);
+            if (value != null && !value.isBlank()) {
+                byId.putIfAbsent(device.id(), value.trim());
+            }
+        }
+        return byId;
+    }
+
+    /** Cipher trimmed to what the AI accepts (20 chars), so a long description is kept, not rejected. */
+    public String cipherForAi() {
+        if (cipher == null || cipher.isBlank()) {
+            return null;
+        }
+        String value = cipher.trim();
+        return value.length() <= 20 ? value : value.substring(0, 20);
     }
 
     public List<Integer> openPortsOrEmpty() {

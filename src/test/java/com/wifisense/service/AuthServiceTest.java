@@ -65,12 +65,12 @@ class AuthServiceTest {
 
         assertThatThrownBy(() -> service.register(new RegisterRequest("ana", "Redes#2026a"), "1.2.3.4"))
                 .isInstanceOf(RegistrationBlockedException.class);
-        verify(users, never()).register(any(), any());
+        verify(users, never()).register(any(), any(), any(), any());
     }
 
     @Test
     void failedRegistrationIsNotCounted() {
-        when(users.register("ana", "weak")).thenThrow(new InvalidAccountException(java.util.List.of("x")));
+        when(users.register("ana", "weak", null, null)).thenThrow(new InvalidAccountException(java.util.List.of("x")));
 
         assertThatThrownBy(() -> service.register(new RegisterRequest("ana", "weak"), "1.2.3.4"))
                 .isInstanceOf(InvalidAccountException.class);

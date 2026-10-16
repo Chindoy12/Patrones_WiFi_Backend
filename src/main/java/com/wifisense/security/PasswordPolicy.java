@@ -48,12 +48,13 @@ public class PasswordPolicy {
         return errors;
     }
 
-    /** Cheap shape check before touching the database; anything outside the limits is simply a failed login. */
     /** The username itself when it is an email address; otherwise an internal placeholder address. */
     public static String emailFor(String username) {
-        return username.contains("@") ? username : username + "@wifisense.local";
+        return username.contains("@") ? username.toLowerCase(java.util.Locale.ROOT)
+                : username + com.wifisense.model.User.PLACEHOLDER_DOMAIN;
     }
 
+    /** Cheap shape check before touching the database; anything outside the limits is simply a failed login. */
     public boolean isPlausibleLogin(String username, String password) {
         return username != null && !username.isBlank() && username.length() <= USERNAME_MAX
                 && password != null && !password.isEmpty() && password.length() <= PASSWORD_MAX;

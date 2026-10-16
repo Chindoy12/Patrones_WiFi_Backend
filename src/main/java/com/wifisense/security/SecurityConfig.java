@@ -1,6 +1,7 @@
 package com.wifisense.security;
 
 import com.nimbusds.jose.jwk.source.ImmutableSecret;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -12,9 +13,11 @@ import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.oauth2.core.DelegatingOAuth2TokenValidator;
 import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.jwt.JwtEncoder;
+import org.springframework.security.oauth2.jwt.JwtValidators;
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 import org.springframework.security.oauth2.jwt.NimbusJwtEncoder;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
@@ -47,9 +50,10 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(HttpMethod.POST, "/api/auth/login", "/api/auth/register").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/auth/challenge").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/auth/password/forgot", "/api/auth/password/reset").permitAll()
                         .requestMatchers("/actuator/health").permitAll()
                         // The agent has no session: AgentReportService checks its own key (X-Agent-Key).
-                        .requestMatchers(HttpMethod.POST, "/api/agent/reports").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/agent/reports", "/api/agent/pair").permitAll()
                         .requestMatchers("/api/auth/me").authenticated()
                         .requestMatchers("/api/my/**").hasRole(END_USER)
                         .requestMatchers("/api/users/**", "/api/observability/**").hasRole(ADMIN)
@@ -83,9 +87,16 @@ public class SecurityConfig {
         return new NimbusJwtEncoder(new ImmutableSecret<>(secretKey(properties)));
     }
 
+    /** Signature and expiry, plus the account check (deleted, disabled or password changed) when it is available. */
     @Bean
-    JwtDecoder jwtDecoder(SecurityProperties properties) {
-        return NimbusJwtDecoder.withSecretKey(secretKey(properties)).macAlgorithm(MacAlgorithm.HS256).build();
+    JwtDecoder jwtDecoder(SecurityProperties properties, ObjectProvider<SessionTokenValidator> sessions) {
+        NimbusJwtDecoder decoder = NimbusJwtDecoder.withSecretKey(secretKey(properties))
+                .macAlgorithm(MacAlgorithm.HS256).build();
+        SessionTokenValidator session = sessions.getIfAvailable();
+        if (session != null) {
+            decoder.setJwtValidator(new DelegatingOAuth2TokenValidator<>(JwtValidators.createDefault(), session));
+        }
+        return decoder;
     }
 
     @Bean

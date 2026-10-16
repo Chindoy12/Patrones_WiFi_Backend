@@ -4,6 +4,7 @@ import com.wifisense.dto.CreateUserRequest;
 import com.wifisense.model.User;
 import com.wifisense.repository.UserRepository;
 import com.wifisense.security.AccountProperties;
+import com.wifisense.security.ContactPolicy;
 import com.wifisense.security.PasswordPolicy;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -21,7 +22,7 @@ class UserServiceTest {
     private final UserRepository users = mock(UserRepository.class);
     private final PasswordEncoder encoder = mock(PasswordEncoder.class);
     private final UserService service = new UserService(users, encoder, new PasswordPolicy(),
-            new AccountProperties("admin", "Admin#2026a", 3));
+            new AccountProperties("admin", "Admin#2026a", 3), new ContactPolicy());
 
     @Test
     void createsUserWithHashedPassword() {
@@ -65,7 +66,7 @@ class UserServiceTest {
         when(encoder.encode("Redes#2026a")).thenReturn("$2a$hash");
         when(users.save(any(User.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
-        var registered = service.register("  ana.lopez@gmail.com ", "Redes#2026a");
+        var registered = service.register("  ana.lopez@gmail.com ", "Redes#2026a", null, null);
 
         assertThat(registered.role()).isEqualTo(User.Role.USER);
         assertThat(registered.username()).isEqualTo("ana.lopez@gmail.com");
@@ -77,20 +78,51 @@ class UserServiceTest {
         when(users.countByRoleIn(User.Role.STAFF)).thenReturn(3L);
         when(users.save(any(User.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
-        assertThat(service.register("ana", "Redes#2026a").role()).isEqualTo(User.Role.USER);
+        assertThat(service.register("ana", "Redes#2026a", "ana@gmail.com", null).role()).isEqualTo(User.Role.USER);
     }
 
     @Test
     void registrationRejectsWeakPasswordsDuplicatesAndReservedNames() {
-        assertThatThrownBy(() -> service.register("ana", "weak")).isInstanceOf(InvalidAccountException.class);
+        assertThatThrownBy(() -> service.register("ana", "weak", "ana@gmail.com", null)).isInstanceOf(InvalidAccountException.class);
 
         when(users.existsByUsernameIgnoreCase("Ana")).thenReturn(true);
-        assertThatThrownBy(() -> service.register("Ana", "Redes#2026a"))
+        assertThatThrownBy(() -> service.register("Ana", "Redes#2026a", "ana@gmail.com", null))
                 .isInstanceOf(DuplicateResourceException.class)
                 .hasMessage("Ese nombre de usuario no está disponible.");
 
-        assertThatThrownBy(() -> service.register("Admin", "Redes#2026a")).isInstanceOf(DuplicateResourceException.class);
+        assertThatThrownBy(() -> service.register("Admin", "Redes#2026a", "admin@gmail.com", null)).isInstanceOf(DuplicateResourceException.class);
         verify(users, never()).save(any());
+    }
+
+    @Test
+    void registrationKeepsARecoveryEmailAndAnInternationalPhone() {
+        when(users.save(any(User.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        service.register("ana", "Redes#2026a", " Ana.Lopez@Gmail.com ", "300 123 4567");
+
+        verify(users).save(argThat(user -> user.getEmail().equals("ana.lopez@gmail.com")
+                && user.getPhone().equals("+573001234567") && user.hasRealEmail()));
+    }
+
+    @Test
+    void registrationAsksForTheEmailAndReportsEveryProblemAtOnce() {
+        assertThatThrownBy(() -> service.register("ana", "Redes#2026a", null, null))
+                .isInstanceOfSatisfying(InvalidAccountException.class, e -> assertThat(e.getErrors())
+                        .containsExactly("Escribe tu correo: lo usamos solo para que puedas recuperar tu contraseña."));
+        assertThatThrownBy(() -> service.register("ana", "weak", "no-es-correo", "12"))
+                .isInstanceOfSatisfying(InvalidAccountException.class, e -> assertThat(e.getErrors())
+                        .contains(ContactPolicy.EMAIL_ERROR, ContactPolicy.PHONE_ERROR).hasSize(6));
+        verify(users, never()).save(any());
+    }
+
+    @Test
+    void anEmailBelongsToOneAccountOnly() {
+        when(users.findByEmailIgnoreCase("ana@gmail.com"))
+                .thenReturn(Optional.of(new User("otra", "ana@gmail.com", "hash", User.Role.USER)));
+
+        assertThatThrownBy(() -> service.register("ana", "Redes#2026a", "ANA@gmail.com", null))
+                .isInstanceOf(DuplicateResourceException.class)
+                .hasMessage("Ese correo ya tiene una cuenta. Si es tuyo, recupera la contraseña.");
     }
 
     @Test

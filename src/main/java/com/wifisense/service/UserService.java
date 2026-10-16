@@ -5,6 +5,7 @@ import com.wifisense.dto.UserResponse;
 import com.wifisense.model.User;
 import com.wifisense.repository.UserRepository;
 import com.wifisense.security.AccountProperties;
+import com.wifisense.security.ContactPolicy;
 import com.wifisense.security.PasswordPolicy;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -26,12 +27,15 @@ public class UserService {
     private final PasswordPolicy policy;
     private final AccountProperties accounts;
 
+    private final ContactPolicy contacts;
+
     public UserService(UserRepository users, PasswordEncoder passwordEncoder, PasswordPolicy policy,
-                       AccountProperties accounts) {
+                       AccountProperties accounts, ContactPolicy contacts) {
         this.users = users;
         this.passwordEncoder = passwordEncoder;
         this.policy = policy;
         this.accounts = accounts;
+        this.contacts = contacts;
     }
 
     private static final Set<String> RESERVED = Set.of("admin", "administrador", "root", "soporte", "sistema", "wifisense");
@@ -48,14 +52,44 @@ public class UserService {
         return UserResponse.from(save(request.username(), request.password(), request.role()));
     }
 
+    /**
+     * Creates an end-user account. The recovery email is the username when it is an email; otherwise it must be
+     * given. The phone is optional. Every problem is reported at once, in Spanish.
+     */
     @Transactional
-    public UserResponse register(String username, String password) {
+    public UserResponse register(String username, String password, String email, String phone) {
         String name = username == null ? null : username.trim();
-        validate(name, password);
-        if (RESERVED.contains(name.toLowerCase())) {
+        List<String> errors = new ArrayList<>(policy.usernameViolations(name));
+        errors.addAll(policy.passwordViolations(password));
+        boolean emailGiven = email != null && !email.isBlank();
+        String recoveryEmail = null;
+        if (emailGiven || (name != null && name.contains("@"))) {
+            recoveryEmail = contacts.email(emailGiven ? email : name).orElse(null);
+            if (recoveryEmail == null) {
+                errors.add(ContactPolicy.EMAIL_ERROR);
+            }
+        } else {
+            errors.add("Escribe tu correo: lo usamos solo para que puedas recuperar tu contraseña.");
+        }
+        String normalizedPhone = null;
+        if (phone != null && !phone.isBlank()) {
+            normalizedPhone = contacts.phone(phone).orElse(null);
+            if (normalizedPhone == null) {
+                errors.add(ContactPolicy.PHONE_ERROR);
+            }
+        }
+        if (!errors.isEmpty()) {
+            throw new InvalidAccountException(errors);
+        }
+        if (RESERVED.contains(name.toLowerCase()) || users.existsByUsernameIgnoreCase(name)) {
             throw new DuplicateResourceException("Ese nombre de usuario no está disponible.");
         }
-        return UserResponse.from(save(name, password, User.Role.USER));
+        if (users.findByEmailIgnoreCase(recoveryEmail).isPresent()) {
+            throw new DuplicateResourceException("Ese correo ya tiene una cuenta. Si es tuyo, recupera la contraseña.");
+        }
+        User user = new User(name, recoveryEmail, passwordEncoder.encode(password), User.Role.USER);
+        user.changeContact(recoveryEmail, normalizedPhone);
+        return UserResponse.from(users.save(user));
     }
 
     private void validate(String username, String password) {

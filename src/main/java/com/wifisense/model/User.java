@@ -41,6 +41,14 @@ public class User {
     @Column(nullable = false)
     private boolean enabled = true;
 
+    /** Optional, international format (+573001234567); kept for recovery by SMS later. */
+    @Column(length = 16)
+    private String phone;
+
+    /** Sessions issued before this moment are no longer accepted (see SessionTokenValidator). */
+    @Column(name = "password_changed_at")
+    private Instant passwordChangedAt;
+
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
@@ -63,6 +71,17 @@ public class User {
         this.passwordHash = newPasswordHash;
     }
 
+    /** Changes the password and closes every session opened before {@code at}. */
+    public void changePassword(String newPasswordHash, Instant at) {
+        this.passwordHash = newPasswordHash;
+        this.passwordChangedAt = at;
+    }
+
+    public void changeContact(String email, String phone) {
+        this.email = email;
+        this.phone = phone;
+    }
+
     public void changeRole(Role newRole) {
         this.role = newRole;
     }
@@ -73,5 +92,14 @@ public class User {
     public String getPasswordHash() { return passwordHash; }
     public Role getRole() { return role; }
     public boolean isEnabled() { return enabled; }
+    public String getPhone() { return phone; }
+    public Instant getPasswordChangedAt() { return passwordChangedAt; }
+
+    /** False for the internal placeholder address of accounts registered without an email. */
+    public boolean hasRealEmail() {
+        return email != null && !email.endsWith(PLACEHOLDER_DOMAIN);
+    }
+
+    public static final String PLACEHOLDER_DOMAIN = "@wifisense.local";
     public Instant getCreatedAt() { return createdAt; }
 }

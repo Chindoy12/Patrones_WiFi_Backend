@@ -44,7 +44,7 @@ public class AuthService {
     public AuthResponse register(RegisterRequest request, String clientAddress) {
         registrations.check(clientAddress);
         String password = cipher.reveal(request.password(), request.challengeId(), request.encryptedPassword());
-        userService.register(request.username(), password);
+        userService.register(request.username(), password, request.email(), request.phone());
         registrations.record(clientAddress);
         return authenticate(request.username().trim(), password, clientAddress);
     }

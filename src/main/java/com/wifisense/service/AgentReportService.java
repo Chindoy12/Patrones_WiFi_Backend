@@ -9,6 +9,7 @@ import com.wifisense.dto.AgentReportRequest;
 import com.wifisense.model.AgentDevice;
 import com.wifisense.model.AgentKey;
 import com.wifisense.model.AgentReport;
+import com.wifisense.model.AlertType;
 import com.wifisense.model.AnomalyType;
 import com.wifisense.repository.AgentDeviceRepository;
 import com.wifisense.repository.AgentKeyRepository;
@@ -42,6 +43,7 @@ public class AgentReportService {
     private final AgentDeviceRepository devices;
     private final HomeNetworkRepository networks;
     private final AiAnalysisClient ai;
+    private final AgentAlertService alerts;
     private final TransactionTemplate transaction;
     private final AgentProperties properties;
     private final ObjectMapper json;
@@ -49,8 +51,9 @@ public class AgentReportService {
 
     public AgentReportService(AgentKeyService keyService, AgentReportThrottle throttle, AgentKeyRepository keys,
                               AgentReportRepository reports, AgentDeviceRepository devices,
-                              HomeNetworkRepository networks, AiAnalysisClient ai, TransactionTemplate transaction,
-                              AgentProperties properties, ObjectMapper json, Clock clock) {
+                              HomeNetworkRepository networks, AiAnalysisClient ai, AgentAlertService alerts,
+                              TransactionTemplate transaction, AgentProperties properties, ObjectMapper json,
+                              Clock clock) {
         this.keyService = keyService;
         this.throttle = throttle;
         this.keys = keys;
@@ -58,6 +61,7 @@ public class AgentReportService {
         this.devices = devices;
         this.networks = networks;
         this.ai = ai;
+        this.alerts = alerts;
         this.transaction = transaction;
         this.properties = properties;
         this.json = json;
@@ -71,11 +75,15 @@ public class AgentReportService {
         Instant now = Instant.now(clock);
 
         List<String> hashes = request.deviceHashesOrEmpty().stream().distinct().toList();
+        Map<String, String> vendors = request.vendorsByFingerprint();
+        Map<String, String> names = request.namesByFingerprint();
         int deviceCount = Math.min(Math.max(request.deviceCount(), hashes.size()), 1024);
-        Prepared prepared = Objects.requireNonNull(transaction.execute(status -> new Prepared(
-                registerDevices(networkId, hashes, now),
-                reports.findByNetworkIdOrderByReceivedAtDesc(networkId,
-                        PageRequest.of(0, Math.max(properties.analysisWindow() - 1, 1))))));
+        Prepared prepared = Objects.requireNonNull(transaction.execute(status -> {
+            DeviceOutcome outcome = registerDevices(networkId, hashes, vendors, names, now);
+            return new Prepared(outcome.newDevices(), outcome.unauthorizedPresent(),
+                    reports.findByNetworkIdOrderByReceivedAtDesc(networkId,
+                            PageRequest.of(0, Math.max(properties.analysisWindow() - 1, 1))));
+        }));
         int newDevices = Math.min(prepared.newDevices(), deviceCount);
 
         ObjectNode details = json.createObjectNode();
@@ -109,37 +117,78 @@ public class AgentReportService {
             keys.markSeen(key.getId(), now);
             return reports.save(report);
         }));
+        raiseAlerts(networkId, newDevices, prepared.unauthorizedPresent(), security, saved.getAnomalyDetected(),
+                anomaly);
         return new AgentReportAck(saved.getId(), deviceCount, newDevices, saved.getSecurityScore(),
                 saved.getSecurityGrade(), saved.getAnomalyDetected(), summary(deviceCount, newDevices, security));
     }
 
-    private record Prepared(int newDevices, List<AgentReport> previous) {
+    /** Turns this report's findings into alerts (recorded and, when due, emailed). Never breaks the report. */
+    private void raiseAlerts(Long networkId, int newDevices, int unauthorizedPresent, JsonNode security,
+                             Boolean anomalyDetected, AiAnalysisResponse anomaly) {
+        List<AgentAlertService.Signal> signals = new ArrayList<>();
+        if (newDevices > 0) {
+            signals.add(new AgentAlertService.Signal(AlertType.NEW_DEVICE, newDevices == 1
+                    ? "Apareció 1 equipo nuevo en tu red." : "Aparecieron " + newDevices + " equipos nuevos en tu red."));
+        }
+        if (unauthorizedPresent > 0) {
+            signals.add(new AgentAlertService.Signal(AlertType.UNAUTHORIZED_DEVICE, unauthorizedPresent == 1
+                    ? "El equipo que marcaste como no autorizado sigue conectado."
+                    : unauthorizedPresent + " equipos que marcaste como no autorizados siguen conectados."));
+        }
+        if (security != null && "CRITICAL".equals(security.path("grade").asText())) {
+            signals.add(new AgentAlertService.Signal(AlertType.SECURITY,
+                    security.path("summary").asText("La seguridad de tu red está en riesgo.")));
+        }
+        if (Boolean.TRUE.equals(anomalyDetected) && anomaly != null) {
+            signals.add(new AgentAlertService.Signal(AlertType.ANOMALY,
+                    anomaly.recommendation() != null ? anomaly.recommendation() : anomaly.message()));
+        }
+        try {
+            alerts.process(networkId, signals);
+        } catch (RuntimeException e) {
+            log.warn("Could not raise alerts for network {}: {}", networkId, e.getMessage());
+        }
+    }
+
+    private record Prepared(int newDevices, int unauthorizedPresent, List<AgentReport> previous) {
+    }
+
+    private record DeviceOutcome(int newDevices, int unauthorizedPresent) {
     }
 
     /**
      * Records every device of the report and returns how many had never been seen on this network. The first report
      * of a network only learns its devices: they are all "new", but announcing them would be noise.
      */
-    private int registerDevices(Long networkId, List<String> hashes, Instant now) {
+    private DeviceOutcome registerDevices(Long networkId, List<String> hashes, Map<String, String> vendors,
+                                          Map<String, String> names, Instant now) {
         boolean learning = !devices.existsByNetworkId(networkId);
         Map<String, AgentDevice> known = new HashMap<>();
         devices.findByNetworkIdOrderByFirstSeenAtAsc(networkId).forEach(d -> known.put(d.getFingerprint(), d));
         int fresh = 0;
+        int unauthorized = 0;
         for (String hash : hashes) {
             AgentDevice device = known.get(hash);
             if (device == null) {
-                devices.save(new AgentDevice(networkId, hash, now));
+                device = new AgentDevice(networkId, hash, now);
+                device.identify(vendors.get(hash), names.get(hash));
+                devices.save(device);
                 fresh++;
             } else {
                 device.seen(now);
+                device.identify(vendors.get(hash), names.get(hash));  // fills maker/name for older devices
+                if (!device.isAuthorized()) {
+                    unauthorized++;
+                }
             }
         }
-        return learning ? 0 : fresh;
+        return new DeviceOutcome(learning ? 0 : fresh, unauthorized);
     }
 
     private ObjectNode wifiDetails(AgentReportRequest request) {
         ObjectNode wifi = json.createObjectNode();
-        wifi.put("cipher", request.cipher());
+        wifi.put("cipher", request.cipherForAi());
         wifi.put("signalPercent", request.signalPercent());
         wifi.put("rxRateMbps", request.rxRateMbps());
         wifi.put("txRateMbps", request.txRateMbps());
@@ -153,7 +202,7 @@ public class AgentReportService {
     private JsonNode assessSecurity(AgentReportRequest request, int deviceCount, int newDevices) {
         try {
             JsonNode answer = ai.securityAssess(new AiSecurityRequest(
-                    Optional.ofNullable(request.authentication()).orElse("UNKNOWN"), request.cipher(),
+                    Optional.ofNullable(request.authentication()).orElse("UNKNOWN"), request.cipherForAi(),
                     request.openPortsOrEmpty().stream().distinct().sorted().toList(), deviceCount, newDevices,
                     request.band(), request.channel(), request.neighborsSameChannel()));
             int score = answer.path("score").asInt(-1);

@@ -7,10 +7,13 @@ import com.wifisense.network.decorator.InvalidSnapshotException;
 import com.wifisense.security.BodyTooLargeException;
 import com.wifisense.security.InvalidEncryptedPasswordException;
 import com.wifisense.security.LoginBlockedException;
+import com.wifisense.security.RecoveryBlockedException;
 import com.wifisense.security.RegistrationBlockedException;
 import com.wifisense.service.AgentReportLimitException;
 import com.wifisense.service.DuplicateResourceException;
 import com.wifisense.service.InvalidAgentKeyException;
+import com.wifisense.service.InvalidPairingCodeException;
+import com.wifisense.service.InvalidResetLinkException;
 import com.wifisense.service.InvalidAccountException;
 import com.wifisense.service.ResourceNotFoundException;
 import com.wifisense.service.UserLimitException;
@@ -45,7 +48,7 @@ public class GlobalExceptionHandler {
         return problem(HttpStatus.UNAUTHORIZED, "Datos incorrectos.");
     }
 
-    @ExceptionHandler({LoginBlockedException.class, RegistrationBlockedException.class})
+    @ExceptionHandler({LoginBlockedException.class, RegistrationBlockedException.class, RecoveryBlockedException.class})
     ProblemDetail blocked(RuntimeException e) {
         return problem(HttpStatus.TOO_MANY_REQUESTS, e.getMessage());
     }
@@ -101,6 +104,11 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(SpeedTestLimitException.class)
     ProblemDetail tooManyTests(SpeedTestLimitException e) {
         return problem(HttpStatus.TOO_MANY_REQUESTS, e.getMessage());
+    }
+
+    @ExceptionHandler({InvalidResetLinkException.class, InvalidPairingCodeException.class})
+    ProblemDetail invalidLinkOrCode(RuntimeException e) {
+        return problem(HttpStatus.BAD_REQUEST, e.getMessage());
     }
 
     @ExceptionHandler(InvalidAgentKeyException.class)

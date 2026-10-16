@@ -50,6 +50,13 @@ wifisense:
     transfers-per-window: 20
     tests-per-window: 6
     window: 10m
+  mail:  # recovery email through Brevo's HTTP API; without BREVO_API_KEY and MAIL_FROM nothing is sent
+    brevo-api-key: ${BREVO_API_KEY:}
+    from: ${MAIL_FROM:}
+    from-name: WiFiSense
+    frontend-url: ${FRONTEND_URL:http://localhost:5173}
+    reset-ttl: 30m
+    log-links: ${MAIL_LOG_LINKS:false}  # true only for local development: prints the link instead of sending it
   agent:  # WiFiSense agent of the end users (Mi Wi-Fi > Agente)
     min-interval: 50s     # the agent reports every 5 min; faster reports are rejected with 429
     retention: 30d        # older reports and devices are deleted every night

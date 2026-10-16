@@ -3,9 +3,12 @@ package com.wifisense.controller;
 import com.wifisense.dto.AgentKeyCreated;
 import com.wifisense.dto.AgentOverview;
 import com.wifisense.dto.AgentPairingCodeResponse;
+import com.wifisense.dto.DeviceUpdateRequest;
+import com.wifisense.service.AgentDeviceService;
 import com.wifisense.service.AgentKeyService;
 import com.wifisense.service.AgentOverviewService;
 import com.wifisense.service.AgentPairingService;
+import jakarta.validation.Valid;
 import org.springframework.http.CacheControl;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -20,16 +23,28 @@ public class MyAgentController {
     private final AgentOverviewService overview;
     private final AgentKeyService keys;
     private final AgentPairingService pairing;
+    private final AgentDeviceService deviceService;
 
-    public MyAgentController(AgentOverviewService overview, AgentKeyService keys, AgentPairingService pairing) {
+    public MyAgentController(AgentOverviewService overview, AgentKeyService keys, AgentPairingService pairing,
+                            AgentDeviceService deviceService) {
         this.overview = overview;
         this.keys = keys;
         this.pairing = pairing;
+        this.deviceService = deviceService;
     }
 
     @GetMapping
     public AgentOverview overview(@PathVariable Long networkId, Authentication authentication) {
         return overview.overview(authentication.getName(), networkId);
+    }
+
+    /** Rename a device or mark it authorized/not authorized. */
+    @PutMapping("/devices/{fingerprint}")
+    public AgentOverview.Device updateDevice(@PathVariable Long networkId, @PathVariable String fingerprint,
+                                             @Valid @RequestBody DeviceUpdateRequest request,
+                                             Authentication authentication) {
+        return deviceService.update(authentication.getName(), networkId, fingerprint, request.label(),
+                request.authorized());
     }
 
     /** The key travels only in this response; it must not be cached anywhere. */

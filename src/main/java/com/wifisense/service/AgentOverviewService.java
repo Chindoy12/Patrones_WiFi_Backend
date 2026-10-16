@@ -7,6 +7,7 @@ import com.wifisense.dto.AgentOverview;
 import com.wifisense.model.AgentDevice;
 import com.wifisense.model.AgentKey;
 import com.wifisense.model.AgentReport;
+import com.wifisense.repository.AgentAlertRepository;
 import com.wifisense.repository.AgentDeviceRepository;
 import com.wifisense.repository.AgentKeyRepository;
 import com.wifisense.repository.AgentReportRepository;
@@ -27,21 +28,25 @@ public class AgentOverviewService {
 
     static final Duration RECENT_DEVICE = Duration.ofHours(24);
 
+    static final int ALERTS_SHOWN = 10;
+
     private final HomeNetworkRepository networks;
     private final AgentKeyRepository keys;
     private final AgentReportRepository reports;
     private final AgentDeviceRepository devices;
+    private final AgentAlertRepository alerts;
     private final AgentProperties properties;
     private final ObjectMapper json;
     private final Clock clock;
 
     public AgentOverviewService(HomeNetworkRepository networks, AgentKeyRepository keys, AgentReportRepository reports,
-                                AgentDeviceRepository devices, AgentProperties properties, ObjectMapper json,
-                                Clock clock) {
+                                AgentDeviceRepository devices, AgentAlertRepository alerts, AgentProperties properties,
+                                ObjectMapper json, Clock clock) {
         this.networks = networks;
         this.keys = keys;
         this.reports = reports;
         this.devices = devices;
+        this.alerts = alerts;
         this.properties = properties;
         this.json = json;
         this.clock = clock;
@@ -64,9 +69,13 @@ public class AgentOverviewService {
                 .map(r -> new AgentOverview.HistoryPoint(r.getReceivedAt(), r.getLatencyMs(), r.getDeviceCount(),
                         r.getSecurityScore(), r.getQualityScore(), r.getAnomalyDetected()))
                 .toList();
+        List<AgentOverview.Alert> alertHistory = alerts
+                .findByNetworkIdOrderByCreatedAtDesc(networkId, PageRequest.of(0, ALERTS_SHOWN)).stream()
+                .map(a -> new AgentOverview.Alert(a.getType().name(), a.getDetail(), a.getCreatedAt()))
+                .toList();
         return new AgentOverview(
                 key == null ? null : new AgentOverview.KeyInfo(key.getKeyPrefix(), key.getCreatedAt(), key.getLastSeenAt()),
-                online, latest == null ? null : toView(latest), history, devices(networkId, latest, now));
+                online, latest == null ? null : toView(latest), history, devices(networkId, latest, now), alertHistory);
     }
 
     private List<AgentOverview.Device> devices(Long networkId, AgentReport latest, Instant now) {
@@ -76,11 +85,13 @@ public class AgentOverviewService {
         }
         Instant learnedAt = all.get(0).getFirstSeenAt();  // devices of the first report are not "new"
         Instant latestAt = latest == null ? null : latest.getReceivedAt();
+        // Unauthorized devices first, then by most recently seen.
         return all.stream()
-                .sorted(Comparator.comparing(AgentDevice::getLastSeenAt).reversed()
+                .sorted(Comparator.comparing(AgentDevice::isAuthorized)
+                        .thenComparing(Comparator.comparing(AgentDevice::getLastSeenAt).reversed())
                         .thenComparing(AgentDevice::getFirstSeenAt))
-                .map(d -> new AgentOverview.Device(d.getFingerprint(), d.getLabel(), d.getFirstSeenAt(),
-                        d.getLastSeenAt(), latestAt != null && !d.getLastSeenAt().isBefore(latestAt),
+                .map(d -> new AgentOverview.Device(d.getFingerprint(), d.getLabel(), d.getVendor(), d.getHostname(), d.isAuthorized(),
+                        d.getFirstSeenAt(), d.getLastSeenAt(), latestAt != null && !d.getLastSeenAt().isBefore(latestAt),
                         d.getFirstSeenAt().isAfter(learnedAt) && d.getFirstSeenAt().isAfter(now.minus(RECENT_DEVICE))))
                 .toList();
     }

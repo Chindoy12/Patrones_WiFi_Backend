@@ -23,6 +23,18 @@ public class AgentDevice {
     @Column(length = 40)
     private String label;
 
+    /** Device maker from the MAC OUI (Apple, Samsung...); null when the agent could not identify it. */
+    @Column(length = 40)
+    private String vendor;
+
+    /** Name the device announces on the network ("iPhone-de-Ana"); null when it announces none. */
+    @Column(length = 63)
+    private String hostname;
+
+    /** FALSE when the user marked the device as not theirs; it is then shown in red and keeps raising an alert. */
+    @Column(nullable = false)
+    private boolean authorized = true;
+
     @Column(name = "first_seen_at", nullable = false, updatable = false)
     private Instant firstSeenAt;
 
@@ -45,13 +57,30 @@ public class AgentDevice {
         }
     }
 
+    /** Keeps the first maker the agent reported and the latest name the device announced. */
+    public void identify(String vendor, String hostname) {
+        if (this.vendor == null && vendor != null) {
+            this.vendor = vendor;
+        }
+        if (hostname != null && !hostname.isBlank()) {
+            this.hostname = hostname;
+        }
+    }
+
     public void rename(String label) {
         this.label = label;
+    }
+
+    public void setAuthorized(boolean authorized) {
+        this.authorized = authorized;
     }
 
     public Long getNetworkId() { return networkId; }
     public String getFingerprint() { return fingerprint; }
     public String getLabel() { return label; }
+    public String getVendor() { return vendor; }
+    public String getHostname() { return hostname; }
+    public boolean isAuthorized() { return authorized; }
     public Instant getFirstSeenAt() { return firstSeenAt; }
     public Instant getLastSeenAt() { return lastSeenAt; }
 

@@ -6,6 +6,7 @@ import com.wifisense.security.SecurityConfig;
 import com.wifisense.security.SecurityProperties;
 import com.wifisense.service.AgentKeyService;
 import com.wifisense.service.AgentOverviewService;
+import com.wifisense.service.AgentPairingService;
 import com.wifisense.service.ResourceNotFoundException;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -40,6 +41,8 @@ class MyAgentControllerTest {
     private AgentOverviewService overview;
     @MockitoBean
     private AgentKeyService keys;
+    @MockitoBean
+    private AgentPairingService pairing;
     @MockitoBean
     private UserDetailsService userDetailsService;
 
@@ -80,5 +83,16 @@ class MyAgentControllerTest {
         mvc.perform(get("/api/my/networks/7/agent").with(as("jefe", "ADMIN")))
                 .andExpect(status().is4xxClientError());
         verifyNoInteractions(overview, keys);
+    }
+
+    @Test
+    void thePairingCodeIsForTheOwnerAndNotCached() throws Exception {
+        when(pairing.create("ana", 7L)).thenReturn(new com.wifisense.dto.AgentPairingCodeResponse("K7QM-4RZD",
+                Instant.parse("2026-10-16T15:15:00Z")));
+
+        mvc.perform(post("/api/my/networks/7/agent/pairing").with(as("ana", "USER")))
+                .andExpect(status().isCreated())
+                .andExpect(header().string("Cache-Control", "no-store"))
+                .andExpect(jsonPath("$.code").value("K7QM-4RZD"));
     }
 }

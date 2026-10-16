@@ -5,11 +5,14 @@ import com.wifisense.dto.UserResponse;
 import com.wifisense.model.User;
 import com.wifisense.security.LoginBlockedException;
 import com.wifisense.security.PasswordCipher;
+import com.wifisense.security.RecoveryBlockedException;
 import com.wifisense.security.RegistrationBlockedException;
 import com.wifisense.security.SecurityConfig;
 import com.wifisense.security.SecurityProperties;
 import com.wifisense.service.AuthService;
 import com.wifisense.service.InvalidAccountException;
+import com.wifisense.service.InvalidResetLinkException;
+import com.wifisense.service.PasswordResetService;
 import com.wifisense.service.UserService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -27,6 +30,9 @@ import java.time.Instant;
 import java.util.List;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -46,6 +52,8 @@ class AuthControllerTest {
     private AuthService authService;
     @MockitoBean
     private UserService userService;
+    @MockitoBean
+    private PasswordResetService resets;
     @MockitoBean
     private UserDetailsService userDetailsService;
     @MockitoBean
@@ -125,5 +133,41 @@ class AuthControllerTest {
         mvc.perform(post("/api/auth/register").contentType(MediaType.APPLICATION_JSON)
                         .content("{\"username\":\"ana\",\"password\":\"Redes#2026a\"}"))
                 .andExpect(status().isTooManyRequests());
+    }
+
+    @Test
+    void recoveryAlwaysAnswersTheSameWithoutASession() throws Exception {
+        mvc.perform(post("/api/auth/password/forgot").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"email\":\"quien@sea.com\"}"))
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.startsWith("Si ese correo tiene una cuenta")));
+        verify(resets).requestLink(eq("quien@sea.com"), any());
+    }
+
+    @Test
+    void anExpiredLinkGetsASpanishExplanation() throws Exception {
+        doThrow(new InvalidResetLinkException()).when(resets).reset(any(), any(), any(), any());
+
+        mvc.perform(post("/api/auth/password/reset").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"token\":\"x\",\"challengeId\":\"c\",\"encryptedPassword\":\"e\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.detail").value(org.hamcrest.Matchers.startsWith("El enlace no es válido")));
+    }
+
+    @Test
+    void tooManyRecoveryRequestsAreRejected() throws Exception {
+        doThrow(new RecoveryBlockedException()).when(resets).requestLink(any(), any());
+
+        mvc.perform(post("/api/auth/password/forgot").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"email\":\"ana@gmail.com\"}"))
+                .andExpect(status().isTooManyRequests());
+    }
+
+    @Test
+    void aSuccessfulResetAnswersNoContent() throws Exception {
+        mvc.perform(post("/api/auth/password/reset").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"token\":\"t\",\"challengeId\":\"c\",\"encryptedPassword\":\"e\"}"))
+                .andExpect(status().isNoContent());
+        verify(resets).reset("t", null, "c", "e");
     }
 }

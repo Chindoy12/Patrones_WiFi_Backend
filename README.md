@@ -59,6 +59,12 @@ o VIEWER. Para un usuario final (`USER`) las rutas del equipo responden **404**,
 | GET | `/api/my/speedtest/ping`, `/api/my/speedtest/download?bytes=` | USER: latencia y bajada de la prueba de conexión |
 | POST | `/api/my/speedtest/upload` (`application/octet-stream`) | USER: subida de la prueba (se lee y se descarta) |
 | GET / POST | `/api/my/networks/{id}/tests` `{"latencyMs","jitterMs","downloadMbps","uploadMbps"}` | USER: historial y resultado calificado por la IA |
+| POST | `/api/auth/password/forgot` `{"email"}` | Público: envía por correo un enlace para cambiar la contraseña. Siempre responde lo mismo (202) |
+| POST | `/api/auth/password/reset` `{"token", "challengeId", "encryptedPassword"}` | Público: contraseña nueva con el enlace (204); cierra todas las sesiones |
+| GET | `/api/my/account` | USER: usuario, correo de recuperación y celular |
+| PUT | `/api/my/account/contact`, `/api/my/account/password` | USER: cambiar correo/celular o contraseña, confirmando con la contraseña actual |
+| POST | `/api/my/networks/{id}/agent/pairing` | USER: código de 8 caracteres (15 min, un uso) para instalar el agente |
+| POST | `/api/agent/pair` `{"code"}` | Instalador del agente: cambia el código por la clave (sin sesión, límite de intentos) |
 | GET | `/api/my/networks/{id}/agent` | USER: último reporte del agente, historial, equipos conectados y auditoría de seguridad |
 | POST / DELETE | `/api/my/networks/{id}/agent/key` | USER: crea (la clave se muestra una sola vez, `Cache-Control: no-store`) o revoca la clave del agente |
 | POST | `/api/agent/reports` (cabecera `X-Agent-Key`) | Agente WiFiSense: sin sesión; la clave decide la red. 201, 401 o 429 con `Retry-After` |
@@ -107,6 +113,17 @@ Errores: `application/problem+json` con `detail` y, en validación, `errors` por
   con los mismos rangos que la base. Las MAC nunca llegan: solo huellas con sal. Los reportes y equipos de más de 30
   días se borran cada noche (`AgentRetentionJob`). Las llamadas a la IA se hacen fuera de la transacción y, si la IA
   no responde, el reporte se guarda sin veredictos.
+- **Recuperar la contraseña.** El enlace lleva 256 bits aleatorios; en la base solo queda su SHA-256 (V21), sirve
+  una vez y vence en 30 minutos. La respuesta es la misma exista o no la cuenta, y el correo sale en segundo plano
+  (`MailDispatcher`), así que ni el texto ni el tiempo de respuesta revelan quién está registrado. Máximo 5
+  solicitudes cada 15 minutos por dirección y 3 enlaces por hora por correo (`RecoveryThrottle`). El token va en el
+  fragmento `#t=` de la URL, que el navegador no envía a ningún servidor. Los correos salen por la API HTTP de
+  Brevo (`BrevoEmailSender`).
+- **Sesiones que se cierran.** Al restablecer o cambiar la contraseña se guarda `password_changed_at` (V20) y
+  `SessionTokenValidator` rechaza los JWT emitidos antes; también los de cuentas borradas o desactivadas.
+- **Instalar el agente con un código.** Mi Wi-Fi muestra un código de 8 caracteres (alfabeto sin 0/O ni 1/I/L,
+  ≈10¹² combinaciones), válido 15 minutos y una sola vez, guardado como SHA-256 (V22). El instalador lo cambia por
+  la clave del agente; cada dirección tiene 10 intentos cada 10 minutos.
 - **Registro limitado:** máximo 5 cuentas por hora desde una misma dirección (`RegistrationThrottle`).
 - **Contraseña cifrada en el navegador (además de HTTPS).** La web pide un reto de un solo uso
   (`GET /api/auth/challenge`: id + llave pública RSA) y envía `{challengeId, encryptedPassword}` cifrado con RSA-OAEP
@@ -163,6 +180,10 @@ pasar a HTTP/2 (h2c), uvicorn lo rechaza y descarta el cuerpo de la petición, y
 | `PLAIN_PASSWORDS_ALLOWED` | `true` (por defecto) / `false` | `false`: solo se aceptan contraseñas cifradas por la web |
 | `CORS_ALLOWED_ORIGINS` | `http://localhost:5173` | Orígenes del frontend, separados por coma |
 | `MONITORING_ENABLED` | `true` | Recolección y análisis automáticos |
+| `BREVO_API_KEY` | `xkeysib-…` (solo en Railway) | Envío del correo de recuperación por la API de Brevo |
+| `MAIL_FROM` | un correo verificado como remitente en Brevo | Remitente del correo de recuperación |
+| `FRONTEND_URL` | `https://patrones-wi-fi-froned-coral.vercel.app` | A dónde apunta el enlace del correo |
+| `MAIL_LOG_LINKS` | `false` | Solo en desarrollo local: `true` escribe el enlace en el log en lugar de enviarlo |
 
 Copia `.env.example`, complétalo y expórtalo en tu terminal o IDE. Nunca subas `.env`.
 

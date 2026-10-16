@@ -3,6 +3,7 @@ package com.wifisense.controller;
 import com.wifisense.dto.AgentReportAck;
 import com.wifisense.security.SecurityConfig;
 import com.wifisense.security.SecurityProperties;
+import com.wifisense.service.AgentPairingService;
 import com.wifisense.service.AgentReportLimitException;
 import com.wifisense.service.AgentReportService;
 import com.wifisense.service.InvalidAgentKeyException;
@@ -41,6 +42,8 @@ class AgentControllerTest {
 
     @MockitoBean
     private AgentReportService service;
+    @MockitoBean
+    private AgentPairingService pairing;
     @MockitoBean
     private UserDetailsService userDetailsService;
 
@@ -91,5 +94,25 @@ class AgentControllerTest {
     @Test
     void onlyPostingReportsIsOpen() throws Exception {
         mvc.perform(get("/api/agent/reports")).andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void theInstallerExchangesACodeWithoutASessionAndTheKeyIsNotCached() throws Exception {
+        when(pairing.pair(eq("K7QM-4RZD"), any())).thenReturn(
+                new com.wifisense.dto.AgentPairResponse("wsa_" + "k".repeat(43), "wsa_kkkk", "Casa"));
+
+        mvc.perform(post("/api/agent/pair").contentType(MediaType.APPLICATION_JSON).content("{\"code\":\"K7QM-4RZD\"}"))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Cache-Control", "no-store"))
+                .andExpect(jsonPath("$.networkName").value("Casa"));
+    }
+
+    @Test
+    void aWrongCodeIsExplainedInSpanish() throws Exception {
+        when(pairing.pair(any(), any())).thenThrow(new com.wifisense.service.InvalidPairingCodeException());
+
+        mvc.perform(post("/api/agent/pair").contentType(MediaType.APPLICATION_JSON).content("{\"code\":\"X\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.detail").value(org.hamcrest.Matchers.startsWith("El código no es válido")));
     }
 }

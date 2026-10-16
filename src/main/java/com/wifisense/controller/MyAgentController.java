@@ -2,8 +2,10 @@ package com.wifisense.controller;
 
 import com.wifisense.dto.AgentKeyCreated;
 import com.wifisense.dto.AgentOverview;
+import com.wifisense.dto.AgentPairingCodeResponse;
 import com.wifisense.service.AgentKeyService;
 import com.wifisense.service.AgentOverviewService;
+import com.wifisense.service.AgentPairingService;
 import org.springframework.http.CacheControl;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -17,10 +19,12 @@ public class MyAgentController {
 
     private final AgentOverviewService overview;
     private final AgentKeyService keys;
+    private final AgentPairingService pairing;
 
-    public MyAgentController(AgentOverviewService overview, AgentKeyService keys) {
+    public MyAgentController(AgentOverviewService overview, AgentKeyService keys, AgentPairingService pairing) {
         this.overview = overview;
         this.keys = keys;
+        this.pairing = pairing;
     }
 
     @GetMapping
@@ -33,6 +37,14 @@ public class MyAgentController {
     public ResponseEntity<AgentKeyCreated> createKey(@PathVariable Long networkId, Authentication authentication) {
         return ResponseEntity.status(HttpStatus.CREATED).cacheControl(CacheControl.noStore())
                 .body(keys.create(authentication.getName(), networkId));
+    }
+
+    /** Short code to type in the installer instead of the key; also never cached. */
+    @PostMapping("/pairing")
+    public ResponseEntity<AgentPairingCodeResponse> createPairingCode(@PathVariable Long networkId,
+                                                                      Authentication authentication) {
+        return ResponseEntity.status(HttpStatus.CREATED).cacheControl(CacheControl.noStore())
+                .body(pairing.create(authentication.getName(), networkId));
     }
 
     @DeleteMapping("/key")

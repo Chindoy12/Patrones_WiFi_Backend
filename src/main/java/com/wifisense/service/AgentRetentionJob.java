@@ -1,6 +1,7 @@
 package com.wifisense.service;
 
 import com.wifisense.repository.AgentDeviceRepository;
+import com.wifisense.repository.AgentAlertRepository;
 import com.wifisense.repository.AgentReportRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -22,13 +23,15 @@ public class AgentRetentionJob {
 
     private final AgentReportRepository reports;
     private final AgentDeviceRepository devices;
+    private final AgentAlertRepository alerts;
     private final AgentProperties properties;
     private final Clock clock;
 
-    public AgentRetentionJob(AgentReportRepository reports, AgentDeviceRepository devices, AgentProperties properties,
-                             Clock clock) {
+    public AgentRetentionJob(AgentReportRepository reports, AgentDeviceRepository devices, AgentAlertRepository alerts,
+                             AgentProperties properties, Clock clock) {
         this.reports = reports;
         this.devices = devices;
+        this.alerts = alerts;
         this.properties = properties;
         this.clock = clock;
     }
@@ -39,9 +42,10 @@ public class AgentRetentionJob {
         Instant before = Instant.now(clock).minus(properties.retention());
         int deletedReports = reports.deleteOlderThan(before);
         int deletedDevices = devices.deleteNotSeenSince(before);
-        if (deletedReports + deletedDevices > 0) {
-            log.info("Agent retention: deleted {} reports and {} devices older than {}", deletedReports,
-                    deletedDevices, before);
+        int deletedAlerts = alerts.deleteOlderThan(before);
+        if (deletedReports + deletedDevices + deletedAlerts > 0) {
+            log.info("Agent retention: deleted {} reports, {} devices and {} alerts older than {}", deletedReports,
+                    deletedDevices, deletedAlerts, before);
         }
     }
 }

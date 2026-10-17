@@ -24,9 +24,12 @@ public record AgentOverview(KeyInfo key, boolean online, Report latest, List<His
                                Integer qualityScore, Boolean anomalyDetected) {
     }
 
-    /** {@code online}: present in the latest report. {@code recent}: joined in the last 24 hours. */
-    public record Device(String id, String label, String vendor, String hostname, boolean authorized,
-                         Instant firstSeenAt, Instant lastSeenAt, boolean online, boolean recent) {
+    /**
+     * {@code privateMac}: uses a random address, so it is almost surely a phone or tablet. {@code online}: present in
+     * the latest report. {@code recent}: joined in the last 24 hours.
+     */
+    public record Device(String id, String label, String vendor, String hostname, boolean privateMac,
+                         boolean authorized, Instant firstSeenAt, Instant lastSeenAt, boolean online, boolean recent) {
     }
 
     /** One past alert of this network. */

@@ -105,7 +105,8 @@ class MyAgentControllerTest {
     void namesAndBlocksADeviceForTheOwner() throws Exception {
         when(deviceService.update(eq("ana"), eq(7L), eq("a".repeat(24)), eq("Celular de Ana"), eq(false)))
                 .thenReturn(new AgentOverview.Device("a".repeat(24), "Celular de Ana", "Apple", "iPhone-de-Ana", false,
-                        Instant.parse("2026-10-12T12:00:00Z"), Instant.parse("2026-10-12T12:00:00Z"), true, false));
+                        false, Instant.parse("2026-10-12T12:00:00Z"), Instant.parse("2026-10-12T12:00:00Z"), true,
+                        false));
 
         mvc.perform(put("/api/my/networks/7/agent/devices/" + "a".repeat(24)).with(as("ana", "USER"))
                         .contentType(MediaType.APPLICATION_JSON)

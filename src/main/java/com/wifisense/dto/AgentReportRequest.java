@@ -37,16 +37,25 @@ public record AgentReportRequest(
         @Size(max = 256, message = "Demasiados equipos en un reporte.")
         List<@NotNull @Pattern(regexp = "^[0-9a-f]{24}$", message = "Huella de equipo inválida.") String> deviceHashes,
         @Size(max = 256, message = "Demasiados equipos en un reporte.") @Valid List<DeviceInfo> devices,
-        @Size(max = 64) List<@NotNull @Min(1) @Max(65535) Integer> openPorts) {
+        @Size(max = 64) List<@NotNull @Min(1) @Max(65535) Integer> openPorts,
+        @Size(max = 60, message = "Demasiados canales en un reporte.") @Valid List<ChannelCount> channelCounts) {
 
     /**
      * One connected device: its fingerprint and, when the agent could read them, the maker and the name the device
-     * announces on the network (never the MAC).
+     * announces on the network (never the MAC). {@code privateMac} says the device uses a random address, which
+     * phones and tablets do on every network: its maker cannot be known but it is almost surely one of those.
      */
     public record DeviceInfo(
             @NotNull @Pattern(regexp = "^[0-9a-f]{24}$", message = "Huella de equipo inválida.") String id,
             @Size(max = 40) String vendor,
-            @Size(max = 63) String name) {
+            @Size(max = 63) String name,
+            Boolean privateMac) {
+    }
+
+    /** Neighbouring access points (not the user's own network) the agent saw on one channel. */
+    public record ChannelCount(
+            @NotNull @Min(1) @Max(233) Integer channel,
+            @NotNull @Min(0) @Max(500) Integer networks) {
     }
 
     /** All fingerprints, taking them from {@code devices} (new agent) or {@code deviceHashes} (old agent). */
@@ -80,6 +89,24 @@ public record AgentReportRequest(
             }
         }
         return byId;
+    }
+
+    /** Fingerprints of the devices that use a private (random) MAC. */
+    public java.util.Set<String> privateFingerprints() {
+        if (devices == null) {
+            return java.util.Set.of();
+        }
+        java.util.Set<String> ids = new java.util.HashSet<>();
+        for (DeviceInfo device : devices) {
+            if (Boolean.TRUE.equals(device.privateMac())) {
+                ids.add(device.id());
+            }
+        }
+        return ids;
+    }
+
+    public List<ChannelCount> channelCountsOrEmpty() {
+        return channelCounts == null ? List.of() : channelCounts;
     }
 
     /** Cipher trimmed to what the AI accepts (20 chars), so a long description is kept, not rejected. */

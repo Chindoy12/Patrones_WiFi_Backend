@@ -27,7 +27,8 @@ import java.util.*;
 
 /**
  * Receives the reports of the agent and puts the AI to work on them: a security audit (encryption, router ports,
- * new devices), the quality of the connection and anomaly detection over the recent history of that network.
+ * new devices), the quality of the connection, the best Wi-Fi channel and anomaly detection over the recent history
+ * of that network.
  * The AI calls run outside any database transaction, and if the AI is down the report is saved without verdicts.
  */
 @Service
@@ -77,9 +78,10 @@ public class AgentReportService {
         List<String> hashes = request.deviceHashesOrEmpty().stream().distinct().toList();
         Map<String, String> vendors = request.vendorsByFingerprint();
         Map<String, String> names = request.namesByFingerprint();
+        Set<String> privates = request.privateFingerprints();
         int deviceCount = Math.min(Math.max(request.deviceCount(), hashes.size()), 1024);
         Prepared prepared = Objects.requireNonNull(transaction.execute(status -> {
-            DeviceOutcome outcome = registerDevices(networkId, hashes, vendors, names, now);
+            DeviceOutcome outcome = registerDevices(networkId, hashes, vendors, names, privates, now);
             return new Prepared(outcome.newDevices(), outcome.unauthorizedPresent(),
                     reports.findByNetworkIdOrderByReceivedAtDesc(networkId,
                             PageRequest.of(0, Math.max(properties.analysisWindow() - 1, 1))));
@@ -90,11 +92,13 @@ public class AgentReportService {
         details.set("wifi", wifiDetails(request));
         details.set("openPorts", json.valueToTree(request.openPortsOrEmpty().stream().distinct().sorted().toList()));
         JsonNode security = assessSecurity(request, deviceCount, newDevices);
+        JsonNode channel = recommendChannel(request);
         JsonNode quality = scoreQuality(request);
         AiAnalysisResponse anomaly = detectAnomaly(networkId, request, deviceCount, now, prepared.previous());
         details.set("security", security);
         details.set("quality", quality);
         details.set("anomaly", anomaly == null ? null : anomalyDetails(anomaly));
+        details.set("channel", channel);
 
         AgentReport saved = Objects.requireNonNull(transaction.execute(status -> {
             AgentReport report = new AgentReport(networks.getReferenceById(networkId), now, request.agentVersion());
@@ -162,7 +166,7 @@ public class AgentReportService {
      * of a network only learns its devices: they are all "new", but announcing them would be noise.
      */
     private DeviceOutcome registerDevices(Long networkId, List<String> hashes, Map<String, String> vendors,
-                                          Map<String, String> names, Instant now) {
+                                          Map<String, String> names, Set<String> privates, Instant now) {
         boolean learning = !devices.existsByNetworkId(networkId);
         Map<String, AgentDevice> known = new HashMap<>();
         devices.findByNetworkIdOrderByFirstSeenAtAsc(networkId).forEach(d -> known.put(d.getFingerprint(), d));
@@ -173,11 +177,13 @@ public class AgentReportService {
             if (device == null) {
                 device = new AgentDevice(networkId, hash, now);
                 device.identify(vendors.get(hash), names.get(hash));
+                device.markPrivateMac(privates.contains(hash));
                 devices.save(device);
                 fresh++;
             } else {
                 device.seen(now);
                 device.identify(vendors.get(hash), names.get(hash));  // fills maker/name for older devices
+                device.markPrivateMac(privates.contains(hash));
                 if (!device.isAuthorized()) {
                     unauthorized++;
                 }
@@ -213,6 +219,30 @@ public class AgentReportService {
             return answer;
         } catch (AiServiceUnavailableException e) {
             log.warn("Agent report saved without security audit: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * Best channel from the neighbours the agent saw. Old agents do not send them, and without them there is nothing
+     * to compare, so then nothing is asked to the AI and Mi Wi-Fi simply shows no recommendation.
+     */
+    private JsonNode recommendChannel(AgentReportRequest request) {
+        if (request.channelCountsOrEmpty().isEmpty()) {
+            return null;
+        }
+        try {
+            JsonNode answer = ai.channelRecommend(new AiChannelRequest(request.band(), request.channel(),
+                    request.channelCountsOrEmpty().stream()
+                            .map(c -> new AiChannelRequest.ChannelCount(c.channel(), c.networks()))
+                            .toList()));
+            if (answer == null || !answer.path("shouldChange").isBoolean() || !answer.hasNonNull("summary")) {
+                log.warn("Ignoring unexpected channel answer from the AI service");
+                return null;
+            }
+            return answer;
+        } catch (AiServiceUnavailableException e) {
+            log.warn("Agent report saved without channel recommendation: {}", e.getMessage());
             return null;
         }
     }

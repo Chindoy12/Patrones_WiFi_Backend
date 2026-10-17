@@ -90,8 +90,9 @@ public class AgentOverviewService {
                 .sorted(Comparator.comparing(AgentDevice::isAuthorized)
                         .thenComparing(Comparator.comparing(AgentDevice::getLastSeenAt).reversed())
                         .thenComparing(AgentDevice::getFirstSeenAt))
-                .map(d -> new AgentOverview.Device(d.getFingerprint(), d.getLabel(), d.getVendor(), d.getHostname(), d.isAuthorized(),
-                        d.getFirstSeenAt(), d.getLastSeenAt(), latestAt != null && !d.getLastSeenAt().isBefore(latestAt),
+                .map(d -> new AgentOverview.Device(d.getFingerprint(), d.getLabel(), d.getVendor(), d.getHostname(),
+                        d.isPrivateMac(), d.isAuthorized(), d.getFirstSeenAt(), d.getLastSeenAt(),
+                        latestAt != null && !d.getLastSeenAt().isBefore(latestAt),
                         d.getFirstSeenAt().isAfter(learnedAt) && d.getFirstSeenAt().isAfter(now.minus(RECENT_DEVICE))))
                 .toList();
     }

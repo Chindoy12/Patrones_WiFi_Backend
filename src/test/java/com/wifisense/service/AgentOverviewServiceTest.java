@@ -134,4 +134,21 @@ class AgentOverviewServiceTest {
     void someoneElsesNetworkIsNotFound() {
         assertThatThrownBy(() -> service.overview("eva", 7L)).isInstanceOf(ResourceNotFoundException.class);
     }
+
+    @Test
+    void flagsDevicesThatUseAPrivateMac() {
+        when(keys.findByNetworkId(7L)).thenReturn(Optional.empty());
+        when(reports.findByNetworkIdOrderByReceivedAtDesc(eq(7L), any(Pageable.class)))
+                .thenReturn(List.of(report(NOW.minusSeconds(60), 2)));
+        AgentDevice phone = new AgentDevice(7L, "d".repeat(24), NOW.minus(Duration.ofDays(1)));
+        phone.markPrivateMac(true);
+        phone.markPrivateMac(false);  // a later report without the flag does not undo it
+        AgentDevice pc = new AgentDevice(7L, "e".repeat(24), NOW.minus(Duration.ofDays(1)));
+        when(devices.findByNetworkIdOrderByFirstSeenAtAsc(7L)).thenReturn(List.of(phone, pc));
+
+        List<AgentOverview.Device> shown = service.overview("ana", 7L).devices();
+
+        assertThat(shown).filteredOn(AgentOverview.Device::privateMac)
+                .extracting(AgentOverview.Device::id).containsExactly("d".repeat(24));
+    }
 }

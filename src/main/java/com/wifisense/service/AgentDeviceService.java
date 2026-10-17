@@ -34,7 +34,7 @@ public class AgentDeviceService {
             device.setAuthorized(authorized);
         }
         return new AgentOverview.Device(device.getFingerprint(), device.getLabel(), device.getVendor(),
-                device.getHostname(), device.isAuthorized(), device.getFirstSeenAt(), device.getLastSeenAt(),
-                false, false);
+                device.getHostname(), device.isPrivateMac(), device.isAuthorized(), device.getFirstSeenAt(),
+                device.getLastSeenAt(), false, false);
     }
 }

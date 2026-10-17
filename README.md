@@ -65,7 +65,7 @@ o VIEWER. Para un usuario final (`USER`) las rutas del equipo responden **404**,
 | PUT | `/api/my/account/contact`, `/api/my/account/password` | USER: cambiar correo/celular o contraseña, confirmando con la contraseña actual |
 | POST | `/api/my/networks/{id}/agent/pairing` | USER: código de 8 caracteres (15 min, un uso) para instalar el agente |
 | POST | `/api/agent/pair` `{"code"}` | Instalador del agente: cambia el código por la clave (sin sesión, límite de intentos) |
-| GET | `/api/my/networks/{id}/agent` | USER: último reporte del agente, historial, equipos conectados y auditoría de seguridad |
+| GET | `/api/my/networks/{id}/agent` | USER: último reporte del agente, historial, equipos conectados (con fabricante, nombre y si usan MAC privada), auditoría de seguridad y canal recomendado |
 | POST / DELETE | `/api/my/networks/{id}/agent/key` | USER: crea (la clave se muestra una sola vez, `Cache-Control: no-store`) o revoca la clave del agente |
 | POST | `/api/agent/reports` (cabecera `X-Agent-Key`) | Agente WiFiSense: sin sesión; la clave decide la red. 201, 401 o 429 con `Retry-After` |
 | GET / POST / PATCH / DELETE | `/api/users`, `/api/users/{id}/role`, `/api/users/{id}` | ADMIN (solo cuentas del equipo, máximo 3) |
@@ -82,6 +82,7 @@ o VIEWER. Para un usuario final (`USER`) las rutas del equipo responden **404**,
 | GET / PATCH | `/api/alerts?status`, `/api/alerts/{id}/acknowledge`, `/api/alerts/{id}/resolve` | GET equipo · PATCH ADMIN, ANALYST |
 | GET | `/api/dashboard/summary` | equipo |
 | GET | `/api/dashboard/status` | equipo: estado de la IA, la base de datos, el monitoreo y alertas abiertas |
+| GET | `/api/home-networks` | ADMIN, ANALYST: redes reales de los usuarios (agente, seguridad, calidad, anomalías, canal). Solo ADMIN ve el dueño completo; nunca datos de sus equipos |
 | GET | `/api/networks/{id}/quality` | equipo: calidad 0–100 de la última medición, calificada por la IA |
 | GET | `/api/observability/data-sources`, `/api/observability/activity` | ADMIN |
 | GET | `/api/reports/networks/{id}?from&to`, `/api/reports/comparison?networkIds=1,2` | equipo |
@@ -164,6 +165,11 @@ interferencia, cobertura débil, falla del proveedor, tráfico sospechoso o no i
 nunca rompe el análisis y siempre concuerda con el veredicto. `GET /api/ai/model` reúne la descripción del modelo y
 su evaluación; mientras la IA la calcula tras reiniciar, responde `evaluationReady: false`.
 
+Con cada reporte del agente se piden a la IA cuatro veredictos: auditoría de seguridad
+(`/api/v1/security/assess`), calidad (`/api/v1/quality/score`), anomalías (`/api/v1/anomalies/detect`) y, si el
+agente envió cuántas redes vecinas hay por canal, el **mejor canal Wi-Fi** (`/api/v1/channel/recommend`). Los cuatro
+se guardan en `agent_reports.details`; si alguno falla el reporte se guarda igual, sin ese veredicto.
+
 El cliente usa **HTTP/1.1** a propósito: sobre `http://` (la red privada de Railway) el cliente HTTP de Java intenta
 pasar a HTTP/2 (h2c), uvicorn lo rechaza y descarta el cuerpo de la petición, y el análisis fallaba con 422.
 
@@ -205,7 +211,8 @@ No hay usuarios de demostración. Al arrancar se crea (o actualiza) el administr
 
 `src/test/java` (convención Maven): fuentes de datos y decoradores, transiciones de estado, las tres estrategias,
 la fachada con mocks, observadores, ciclo de vida de alertas y un `@WebMvcTest` que verifica seguridad por rol,
-validación y errores 404, y el agente (claves, límite de reportes, equipos nuevos, IA caída).
+validación y errores 404, el agente (claves, límite de reportes, equipos nuevos y con MAC privada, canal
+recomendado, IA caída) y el panel del equipo con datos reales (totales, orden, dueño enmascarado para ANALYST).
 
 ## Pendiente (≈20 %)
 

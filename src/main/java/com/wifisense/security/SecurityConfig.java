@@ -57,6 +57,8 @@ public class SecurityConfig {
                         .requestMatchers("/api/auth/me").authenticated()
                         .requestMatchers("/api/my/**").hasRole(END_USER)
                         .requestMatchers("/api/users/**", "/api/observability/**").hasRole(ADMIN)
+                        // Real end-user networks: the team members who support them, never a read-only viewer.
+                        .requestMatchers("/api/home-networks/**").hasAnyRole(ADMIN, ANALYST)
                         .requestMatchers(HttpMethod.POST, "/api/networks/*/measurements/collect",
                                 "/api/networks/*/analyses").hasAnyRole(ADMIN, ANALYST)
                         .requestMatchers(HttpMethod.PATCH, "/api/alerts/**").hasAnyRole(ADMIN, ANALYST)

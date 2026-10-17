@@ -75,7 +75,7 @@ class AgentReportServiceTest {
 
     private static AgentReportRequest request(List<String> hashes, Double loss) {
         return new AgentReportRequest("1.0.0", "Windows", "Casa", "WPA2", "CCMP", "5", 44, -58, 84, 433.3, 390.0, 2,
-                9, null, 21.5, 2.0, loss, 3.1, hashes.size(), hashes, null, List.of(443, 80, 80));
+                9, null, 21.5, 2.0, loss, 3.1, hashes.size(), hashes, null, List.of(443, 80, 80), null);
     }
 
     private static AiAnalysisResponse anomaly(boolean detected, String type) {
@@ -207,7 +207,8 @@ class AgentReportServiceTest {
         when(devices.findByNetworkIdOrderByFirstSeenAtAsc(7L)).thenReturn(List.of());
         AgentReportRequest request = new AgentReportRequest("1.2.0", "Windows", "Casa", "WPA2", "CCMP", "5", 44, -58,
                 84, null, null, null, null, null, 20.0, 2.0, 0.0, null, 1,
-                null, List.of(new AgentReportRequest.DeviceInfo(PHONE, "Apple", "iPhone-de-Ana")), List.of());
+                null, List.of(new AgentReportRequest.DeviceInfo(PHONE, "Apple", "iPhone-de-Ana", null)), List.of(),
+                null);
 
         service.receive(KEY, request);
 
@@ -223,7 +224,7 @@ class AgentReportServiceTest {
         ArgumentCaptor<AiSecurityRequest> security = ArgumentCaptor.forClass(AiSecurityRequest.class);
         AgentReportRequest request = new AgentReportRequest("1.2.0", "Windows", "Casa", "WPA2",
                 "CCMP (TKIP) y un texto larguísimo que no cabe", "5", 44, -58, 84, null, null, null, null, null,
-                20.0, 2.0, 0.0, null, 1, List.of(PHONE), null, List.of());
+                20.0, 2.0, 0.0, null, 1, List.of(PHONE), null, List.of(), null);
 
         service.receive(KEY, request);
 
@@ -258,5 +259,64 @@ class AgentReportServiceTest {
         verify(alerts).process(eq(7L), raised.capture());
         assertThat(raised.getValue()).extracting(AgentAlertService.Signal::type)
                 .contains(com.wifisense.model.AlertType.UNAUTHORIZED_DEVICE);
+    }
+
+    private static AgentReportRequest withChannels(List<AgentReportRequest.ChannelCount> counts) {
+        return new AgentReportRequest("1.3.0", "Windows", "Casa", "WPA2", "CCMP", "2.4", 6, -58, 84, null, null, 4,
+                9, null, 21.5, 2.0, 0.0, 3.1, 1, List.of(PHONE), null, List.of(), counts);
+    }
+
+    @Test
+    void remembersThatADeviceUsesAPrivateMac() {
+        when(devices.existsByNetworkId(7L)).thenReturn(true);
+        when(devices.findByNetworkIdOrderByFirstSeenAtAsc(7L)).thenReturn(List.of());
+        AgentReportRequest request = new AgentReportRequest("1.3.0", "Windows", "Casa", "WPA2", "CCMP", "5", 44, -58,
+                84, null, null, null, null, null, 20.0, 2.0, 0.0, null, 2, null,
+                List.of(new AgentReportRequest.DeviceInfo(STRANGER, null, null, true),
+                        new AgentReportRequest.DeviceInfo(LAPTOP, "Intel", "PC-SALA", null)), List.of(), null);
+
+        service.receive(KEY, request);
+
+        ArgumentCaptor<AgentDevice> stored = ArgumentCaptor.forClass(AgentDevice.class);
+        verify(devices, times(2)).save(stored.capture());
+        assertThat(stored.getAllValues()).filteredOn(AgentDevice::isPrivateMac)
+                .extracting(AgentDevice::getFingerprint).containsExactly(STRANGER);
+    }
+
+    @Test
+    void asksTheAiForTheBestChannelAndKeepsItWithTheReport() throws Exception {
+        when(ai.channelRecommend(any())).thenReturn(JSON.readTree(
+                "{\"recommendedChannel\":11,\"shouldChange\":true,\"summary\":\"Cambia al 11\"}"));
+        ArgumentCaptor<AiChannelRequest> asked = ArgumentCaptor.forClass(AiChannelRequest.class);
+
+        service.receive(KEY, withChannels(List.of(new AgentReportRequest.ChannelCount(6, 4),
+                new AgentReportRequest.ChannelCount(1, 2))));
+
+        verify(ai).channelRecommend(asked.capture());
+        assertThat(asked.getValue().band()).isEqualTo("2.4");
+        assertThat(asked.getValue().channel()).isEqualTo(6);
+        assertThat(asked.getValue().channelCounts())
+                .containsExactly(new AiChannelRequest.ChannelCount(6, 4), new AiChannelRequest.ChannelCount(1, 2));
+        JsonNode channel = JSON.readTree(saved().getDetails()).get("channel");
+        assertThat(channel.get("recommendedChannel").asInt()).isEqualTo(11);
+        assertThat(channel.get("shouldChange").asBoolean()).isTrue();
+    }
+
+    @Test
+    void withoutNeighbourCountsTheAiIsNotAskedForAChannel() throws Exception {
+        service.receive(KEY, request(List.of(PHONE), 0.0));
+
+        verify(ai, never()).channelRecommend(any());
+        assertThat(JSON.readTree(saved().getDetails()).get("channel").isNull()).isTrue();
+    }
+
+    @Test
+    void aChannelFailureOrOddAnswerDoesNotLoseTheReport() throws Exception {
+        when(ai.channelRecommend(any())).thenThrow(new AiServiceUnavailableException("caído", null));
+
+        service.receive(KEY, withChannels(List.of(new AgentReportRequest.ChannelCount(6, 4))));
+
+        assertThat(JSON.readTree(saved().getDetails()).get("channel").isNull()).isTrue();
+        assertThat(saved().getSecurityScore()).isEqualTo(75);
     }
 }

@@ -20,6 +20,7 @@ public class HttpAiAnalysisClient implements AiAnalysisClient {
     private static final String EVALUATION_PATH = "/api/v1/model/evaluation";
     private static final String QUALITY_PATH = "/api/v1/quality/score";
     private static final String SECURITY_PATH = "/api/v1/security/assess";
+    private static final String CHANNEL_PATH = "/api/v1/channel/recommend";
     private static final String HEALTH_PATH = "/health";
 
     private final RestClient restClient;
@@ -104,6 +105,20 @@ public class HttpAiAnalysisClient implements AiAnalysisClient {
                     .body(JsonNode.class);
         } catch (RestClientException e) {
             throw new AiServiceUnavailableException("Falló la auditoría de seguridad: " + e.getMessage(), e);
+        }
+    }
+
+    @Override
+    public JsonNode channelRecommend(AiChannelRequest request) {
+        try {
+            return restClient.post()
+                    .uri(CHANNEL_PATH)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(request)
+                    .retrieve()
+                    .body(JsonNode.class);
+        } catch (RestClientException e) {
+            throw new AiServiceUnavailableException("Falló la recomendación de canal: " + e.getMessage(), e);
         }
     }
 

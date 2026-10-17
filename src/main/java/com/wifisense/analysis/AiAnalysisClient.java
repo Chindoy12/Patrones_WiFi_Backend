@@ -21,6 +21,9 @@ public interface AiAnalysisClient {
     /** 0-100 security audit of a home network from what the agent saw, with findings and actions. */
     JsonNode securityAssess(AiSecurityRequest request);
 
+    /** Channel with the least interference from the neighbouring networks, and whether moving to it is worth it. */
+    JsonNode channelRecommend(AiChannelRequest request);
+
     /** True when the AI service answers its health check; never throws. */
     boolean isHealthy();
 }

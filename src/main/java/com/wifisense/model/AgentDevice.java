@@ -35,6 +35,10 @@ public class AgentDevice {
     @Column(nullable = false)
     private boolean authorized = true;
 
+    /** TRUE when the device uses a random ("private") MAC: almost always a phone or a tablet. */
+    @Column(name = "private_mac", nullable = false)
+    private boolean privateMac;
+
     @Column(name = "first_seen_at", nullable = false, updatable = false)
     private Instant firstSeenAt;
 
@@ -67,6 +71,11 @@ public class AgentDevice {
         }
     }
 
+    /** A MAC never stops being random for the same fingerprint, so the flag is only ever turned on. */
+    public void markPrivateMac(boolean privateMac) {
+        this.privateMac = this.privateMac || privateMac;
+    }
+
     public void rename(String label) {
         this.label = label;
     }
@@ -81,6 +90,7 @@ public class AgentDevice {
     public String getVendor() { return vendor; }
     public String getHostname() { return hostname; }
     public boolean isAuthorized() { return authorized; }
+    public boolean isPrivateMac() { return privateMac; }
     public Instant getFirstSeenAt() { return firstSeenAt; }
     public Instant getLastSeenAt() { return lastSeenAt; }
 

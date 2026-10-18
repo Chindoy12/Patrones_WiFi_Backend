@@ -3,6 +3,8 @@ package com.wifisense.service;
 import com.wifisense.repository.AgentDeviceRepository;
 import com.wifisense.repository.AgentAlertRepository;
 import com.wifisense.repository.AgentReportRepository;
+import com.wifisense.repository.SensorDeviceRepository;
+import com.wifisense.repository.SensorReportRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -13,8 +15,9 @@ import java.time.Clock;
 import java.time.Instant;
 
 /**
- * Deletes, every night, agent reports and devices older than the retention period. An agent sends close to 9 000
- * reports a month; keeping them forever would only grow the database and the data about the user's home.
+ * Deletes, every night, agent reports and devices older than the retention period, of Mi Wi-Fi and of the sensors of
+ * the team networks. An agent sends close to 9 000 reports a month; keeping them forever would only grow the database
+ * and the data about the user's home. The measurements of the team networks follow their own retention (90 days).
  */
 @Component
 public class AgentRetentionJob {
@@ -24,14 +27,19 @@ public class AgentRetentionJob {
     private final AgentReportRepository reports;
     private final AgentDeviceRepository devices;
     private final AgentAlertRepository alerts;
+    private final SensorReportRepository sensorReports;
+    private final SensorDeviceRepository sensorDevices;
     private final AgentProperties properties;
     private final Clock clock;
 
     public AgentRetentionJob(AgentReportRepository reports, AgentDeviceRepository devices, AgentAlertRepository alerts,
+                             SensorReportRepository sensorReports, SensorDeviceRepository sensorDevices,
                              AgentProperties properties, Clock clock) {
         this.reports = reports;
         this.devices = devices;
         this.alerts = alerts;
+        this.sensorReports = sensorReports;
+        this.sensorDevices = sensorDevices;
         this.properties = properties;
         this.clock = clock;
     }
@@ -40,8 +48,8 @@ public class AgentRetentionJob {
     @Transactional
     public void purge() {
         Instant before = Instant.now(clock).minus(properties.retention());
-        int deletedReports = reports.deleteOlderThan(before);
-        int deletedDevices = devices.deleteNotSeenSince(before);
+        int deletedReports = reports.deleteOlderThan(before) + sensorReports.deleteOlderThan(before);
+        int deletedDevices = devices.deleteNotSeenSince(before) + sensorDevices.deleteNotSeenSince(before);
         int deletedAlerts = alerts.deleteOlderThan(before);
         if (deletedReports + deletedDevices + deletedAlerts > 0) {
             log.info("Agent retention: deleted {} reports, {} devices and {} alerts older than {}", deletedReports,

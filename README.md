@@ -76,6 +76,8 @@ y cierre de sesión. «equipo» = ADMIN, ANALYST o VIEWER. Para un usuario final
 | GET | `/api/networks/sources` | equipo: fuentes que se pueden elegir al registrar una red (en producción solo `AGENT`) |
 | GET | `/api/networks/{id}/sensor` | equipo: si la red tiene sensor, si está reportando, último reporte, versión y sistema |
 | POST / DELETE | `/api/networks/{id}/sensor/pairing`, `/api/networks/{id}/sensor` | ADMIN: código de 8 caracteres (15 min, un uso) para instalar el sensor · quitar el sensor (su clave deja de servir) |
+| GET | `/api/networks/{id}/sensor/overview` | equipo: último reporte del sensor con la auditoría de seguridad, la calidad y el mejor canal, historial y equipos conectados (fabricante, nombre, dirección privada), como Mi Wi-Fi |
+| PUT | `/api/networks/{id}/sensor/devices/{fingerprint}` `{"label","authorized"}` | ADMIN: nombrar un equipo o marcarlo como no autorizado |
 | GET / POST | `/api/devices?networkId&limit`, `/api/devices/{id}/sessions?limit` | GET equipo (máximo 500, los más recientes primero) · POST ADMIN |
 | GET | `/api/networks/{id}/measurements?from&to&limit` | equipo |
 | POST | `/api/networks/{id}/measurements/collect` | ADMIN, ANALYST (una red con sensor responde 503: la mide su sensor) |
@@ -126,6 +128,11 @@ Errores: `application/problem+json` con `detail` y, en validación, `errors` por
   (`SensorReportService`). Una clave de sensor solo sirve para su red, puede reportar como máximo una vez cada 50 s y
   quitar el sensor la invalida al instante. Las fuentes simuladas no se pueden elegir ni se recolectan en producción
   (`DataSourcePolicy`); solo existen con `DEMO_DATA_SOURCES=true` para una demostración local.
+  Desde V36 cada reporte del sensor también se guarda como en Mi Wi-Fi (`network_sensor_reports`): la IA audita la
+  seguridad, califica la calidad y recomienda el canal (`AgentInsights`, compartido con el agente de Mi Wi-Fi), y los
+  equipos quedan en `network_sensor_devices` solo con la huella con sal de su MAC (`SensorDeviceService`). Un equipo
+  nuevo, uno marcado como no autorizado que sigue conectado o una seguridad crítica abren una alerta del equipo (estas
+  dos últimas solo si no hay ya una abierta igual). Reportes y equipos de más de 30 días se borran cada noche.
 - **Recuperar la contraseña.** El enlace lleva 256 bits aleatorios; en la base solo queda su SHA-256 (V21), sirve
   una vez y vence en 30 minutos. La respuesta es la misma exista o no la cuenta, y el correo sale en segundo plano
   (`MailDispatcher`), así que ni el texto ni el tiempo de respuesta revelan quién está registrado. Máximo 5
@@ -262,21 +269,22 @@ No hay usuarios de demostración. Al arrancar se crea (o actualiza) el administr
 
 ## Pruebas
 
-`src/test/java` (convención Maven), 322 pruebas:
+`src/test/java` (convención Maven), 331 pruebas:
 
-- **Unitarias y de controladores (314):** fuentes de datos y decoradores, transiciones de estado, las tres
+- **Unitarias y de controladores (323):** fuentes de datos y decoradores, transiciones de estado, las tres
   estrategias, la fachada con mocks, observadores, ciclo de vida de alertas y `@WebMvcTest` que verifica seguridad por
   rol, validación y errores 404, el agente (claves, límite de reportes, equipos nuevos y con MAC privada, canal
   recomendado, IA caída), el panel del equipo con datos reales, las sesiones (rotación, copia detectada, cambio de
   contraseña y de rol), la limpieza nocturna por lotes y el sensor de las redes del equipo (código, clave, reporte
-  convertido en medición con tráfico y protocolos, fuentes permitidas).
+  convertido en medición con tráfico y protocolos, fuentes permitidas, equipos, auditoría y alertas del sensor).
 - **De integración con PostgreSQL real (8, paquete `integration`):** el backend completo contra una base creada con
   las migraciones de WiFiSense-database, conectado como `wifisense_app`. Prueban por HTTP el registro, el inicio de
   sesión sin importar mayúsculas, la renovación, la copia de un refresh token, el cierre de sesión, el cambio de
   contraseña y de rol; y en SQL que un refresh token se gasta una sola vez, que las estadísticas del reporte calculadas
   por PostgreSQL son iguales a las de Java y que la limpieza borra solo lo viejo (las alertas abiertas se quedan).
   Además, el recorrido completo del sensor: registrar la red, rechazar una simulada, instalar con el código, reportar
-  y encontrar la medición, el tráfico y los protocolos en la base; quitar el sensor deja la clave sin efecto.
+  y encontrar la medición, el tráfico, los protocolos y los equipos en la base; marcar un equipo como no autorizado;
+  quitar el sensor deja la clave sin efecto.
   Se ejecutan cuando existe `WIFISENSE_IT_DATABASE_URL`.
 
 **GitHub Actions** (`.github/workflows/backend.yml`) corre en cada Pull Request y en `main`: crea PostgreSQL 16 con las
@@ -285,8 +293,8 @@ integración no corrieron) y construye la imagen Docker que despliega Railway.
 
 ## Pendiente
 
-Nombres de los equipos conectados en las redes del equipo (fase del agente y la IA); fuentes Router API y SNMP; el
-sensor mide el tráfico del computador donde está instalado, no el de toda la red; pruebas de carga; que la web use el refresh
-token (fase del frontend) para bajar `JWT_TTL` a 15 minutos.
+Fuentes Router API y SNMP (el sensor mide el tráfico del computador donde está instalado, no el de toda la red);
+pruebas de carga; que la web use el refresh token (fase del frontend) para bajar `JWT_TTL` a 15 minutos; reporte
+semanal.
 
 Despliegue: ver [DEPLOYMENT.md](DEPLOYMENT.md).

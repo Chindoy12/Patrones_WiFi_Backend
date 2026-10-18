@@ -34,7 +34,7 @@ import java.util.*;
 @Service
 public class AgentReportService {
 
-    static final Set<String> SECURITY_GRADES = Set.of("SECURE", "ACCEPTABLE", "AT_RISK", "CRITICAL");
+    static final Set<String> SECURITY_GRADES = AgentInsights.SECURITY_GRADES;
     private static final Logger log = LoggerFactory.getLogger(AgentReportService.class);
 
     private final AgentKeyService keyService;
@@ -44,6 +44,7 @@ public class AgentReportService {
     private final AgentDeviceRepository devices;
     private final HomeNetworkRepository networks;
     private final AiAnalysisClient ai;
+    private final AgentInsights insights;
     private final AgentAlertService alerts;
     private final TransactionTemplate transaction;
     private final AgentProperties properties;
@@ -62,6 +63,7 @@ public class AgentReportService {
         this.devices = devices;
         this.networks = networks;
         this.ai = ai;
+        this.insights = new AgentInsights(ai, json);
         this.alerts = alerts;
         this.transaction = transaction;
         this.properties = properties;
@@ -89,11 +91,11 @@ public class AgentReportService {
         int newDevices = Math.min(prepared.newDevices(), deviceCount);
 
         ObjectNode details = json.createObjectNode();
-        details.set("wifi", wifiDetails(request));
+        details.set("wifi", insights.wifiDetails(request));
         details.set("openPorts", json.valueToTree(request.openPortsOrEmpty().stream().distinct().sorted().toList()));
-        JsonNode security = assessSecurity(request, deviceCount, newDevices);
-        JsonNode channel = recommendChannel(request);
-        JsonNode quality = scoreQuality(request);
+        JsonNode security = insights.assessSecurity(request, deviceCount, newDevices);
+        JsonNode channel = insights.recommendChannel(request);
+        JsonNode quality = insights.scoreQuality(request);
         AiAnalysisResponse anomaly = detectAnomaly(networkId, request, deviceCount, now, prepared.previous());
         details.set("security", security);
         details.set("quality", quality);
@@ -190,77 +192,6 @@ public class AgentReportService {
             }
         }
         return new DeviceOutcome(learning ? 0 : fresh, unauthorized);
-    }
-
-    private ObjectNode wifiDetails(AgentReportRequest request) {
-        ObjectNode wifi = json.createObjectNode();
-        wifi.put("cipher", request.cipherForAi());
-        wifi.put("signalPercent", request.signalPercent());
-        wifi.put("rxRateMbps", request.rxRateMbps());
-        wifi.put("txRateMbps", request.txRateMbps());
-        wifi.put("neighborsSameChannel", request.neighborsSameChannel());
-        wifi.put("neighborsTotal", request.neighborsTotal());
-        wifi.put("note", request.wifiNote());
-        wifi.put("platform", request.platform());
-        return wifi;
-    }
-
-    private JsonNode assessSecurity(AgentReportRequest request, int deviceCount, int newDevices) {
-        try {
-            JsonNode answer = ai.securityAssess(new AiSecurityRequest(
-                    Optional.ofNullable(request.authentication()).orElse("UNKNOWN"), request.cipherForAi(),
-                    request.openPortsOrEmpty().stream().distinct().sorted().toList(), deviceCount, newDevices,
-                    request.band(), request.channel(), request.neighborsSameChannel()));
-            int score = answer.path("score").asInt(-1);
-            if (score < 0 || score > 100 || !SECURITY_GRADES.contains(answer.path("grade").asText())) {
-                log.warn("Ignoring unexpected security answer from the AI service");
-                return null;
-            }
-            return answer;
-        } catch (AiServiceUnavailableException e) {
-            log.warn("Agent report saved without security audit: {}", e.getMessage());
-            return null;
-        }
-    }
-
-    /**
-     * Best channel from the neighbours the agent saw. Old agents do not send them, and without them there is nothing
-     * to compare, so then nothing is asked to the AI and Mi Wi-Fi simply shows no recommendation.
-     */
-    private JsonNode recommendChannel(AgentReportRequest request) {
-        if (request.channelCountsOrEmpty().isEmpty()) {
-            return null;
-        }
-        try {
-            JsonNode answer = ai.channelRecommend(new AiChannelRequest(request.band(), request.channel(),
-                    request.channelCountsOrEmpty().stream()
-                            .map(c -> new AiChannelRequest.ChannelCount(c.channel(), c.networks()))
-                            .toList()));
-            if (answer == null || !answer.path("shouldChange").isBoolean() || !answer.hasNonNull("summary")) {
-                log.warn("Ignoring unexpected channel answer from the AI service");
-                return null;
-            }
-            return answer;
-        } catch (AiServiceUnavailableException e) {
-            log.warn("Agent report saved without channel recommendation: {}", e.getMessage());
-            return null;
-        }
-    }
-
-    private JsonNode scoreQuality(AgentReportRequest request) {
-        if (request.latencyMs() == null || request.jitterMs() == null || request.latencyMs() <= 0) {
-            return null;
-        }
-        try {
-            JsonNode answer = ai.qualityScore(new AiQualityRequest(request.latencyMs(), request.jitterMs(),
-                    request.packetLossPct(), null, null, null,
-                    request.signalDbm() == null ? null : request.signalDbm().doubleValue()));
-            int score = answer.path("score").asInt(-1);
-            return score >= 0 && score <= 100 ? answer : null;
-        } catch (AiServiceUnavailableException e) {
-            log.warn("Agent report saved without quality score: {}", e.getMessage());
-            return null;
-        }
     }
 
     /** Isolation Forest on this report, with the previous complete reports of the network as context. */

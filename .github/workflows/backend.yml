@@ -85,5 +85,15 @@ jobs:
           if integration == 0:
               raise SystemExit("Las pruebas de integración con PostgreSQL no se ejecutaron")
 
+      # The free registries limit how much the shared GitHub machines download (429 Too Many Requests). That is not a
+      # problem of the code, so the same official images are tried from another registry before failing.
       - name: Imagen Docker (la misma que construye Railway)
-        run: docker build -t wifisense-backend:ci .
+        run: |
+          for registry in public.ecr.aws/docker/library mirror.gcr.io/library docker.io/library; do
+            if docker build --build-arg BASE_REGISTRY="$registry" -t wifisense-backend:ci .; then
+              echo "Imagen construida con las imágenes base de $registry"
+              exit 0
+            fi
+            echo "::warning::$registry no entregó las imágenes base; se intenta con otro registro"
+          done
+          exit 1

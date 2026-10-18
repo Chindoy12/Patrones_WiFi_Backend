@@ -13,7 +13,7 @@
 
     <groupId>com.wifisense</groupId>
     <artifactId>wifisense-backend</artifactId>
-    <version>0.8.0</version>
+    <version>0.12.0</version>
     <name>WiFiSense Backend</name>
     <description>Wi-Fi monitoring, observability and analysis API</description>
 

@@ -16,9 +16,6 @@ public interface MeasurementRepository extends JpaRepository<Measurement, Long> 
     List<Measurement> findByNetworkIdAndMeasuredAtBetweenOrderByMeasuredAtDesc(Long networkId, Instant from,
                                                                                Instant to, Pageable pageable);
 
-    List<Measurement> findByNetworkIdAndMeasuredAtBetweenOrderByMeasuredAtAsc(Long networkId, Instant from,
-                                                                              Instant to);
-
     @Query("select avg(m.latencyMs) from Measurement m where m.measuredAt >= :since")
     Double averageLatencySince(Instant since);
 

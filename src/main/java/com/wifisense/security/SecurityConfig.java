@@ -20,6 +20,8 @@ import org.springframework.security.oauth2.jwt.JwtEncoder;
 import org.springframework.security.oauth2.jwt.JwtValidators;
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 import org.springframework.security.oauth2.jwt.NimbusJwtEncoder;
+import org.springframework.security.oauth2.server.resource.web.BearerTokenResolver;
+import org.springframework.security.oauth2.server.resource.web.DefaultBearerTokenResolver;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
 import org.springframework.security.oauth2.server.resource.authentication.JwtGrantedAuthoritiesConverter;
 import org.springframework.security.web.SecurityFilterChain;
@@ -31,6 +33,7 @@ import javax.crypto.SecretKey;
 import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Set;
 
 @Configuration
 public class SecurityConfig {
@@ -39,6 +42,15 @@ public class SecurityConfig {
     private static final String ANALYST = "ANALYST";
     private static final String VIEWER = "VIEWER";
     private static final String END_USER = "USER";
+
+    /**
+     * Public account endpoints: a token in the Authorization header is ignored there. Otherwise an expired access
+     * token, sent along with the refresh token that is meant to renew it, would be rejected with 401 before the
+     * request even reached /api/auth/refresh.
+     */
+    static final Set<String> PUBLIC_AUTH_PATHS = Set.of("/api/auth/challenge", "/api/auth/login",
+            "/api/auth/register", "/api/auth/refresh", "/api/auth/logout", "/api/auth/password/forgot",
+            "/api/auth/password/reset");
 
     @Bean
     SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
@@ -49,6 +61,8 @@ public class SecurityConfig {
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(HttpMethod.POST, "/api/auth/login", "/api/auth/register").permitAll()
+                        // The refresh token is the credential here: the access token may have already expired.
+                        .requestMatchers(HttpMethod.POST, "/api/auth/refresh", "/api/auth/logout").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/auth/challenge").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/auth/password/forgot", "/api/auth/password/reset").permitAll()
                         .requestMatchers("/actuator/health").permitAll()
@@ -68,7 +82,8 @@ public class SecurityConfig {
                         .requestMatchers("/api/**").hasAnyRole(ADMIN, ANALYST, VIEWER)
                         .anyRequest().authenticated())
                 .exceptionHandling(errors -> errors.accessDeniedHandler(new StaffOnlyAccessDeniedHandler()))
-                .oauth2ResourceServer(oauth -> oauth.jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter())))
+                .oauth2ResourceServer(oauth -> oauth.bearerTokenResolver(bearerTokenResolver())
+                        .jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter())))
                 .build();
     }
 
@@ -110,6 +125,11 @@ public class SecurityConfig {
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/api/**", config);
         return source;
+    }
+
+    static BearerTokenResolver bearerTokenResolver() {
+        DefaultBearerTokenResolver header = new DefaultBearerTokenResolver();
+        return request -> PUBLIC_AUTH_PATHS.contains(request.getRequestURI()) ? null : header.resolve(request);
     }
 
     private static JwtAuthenticationConverter jwtAuthenticationConverter() {

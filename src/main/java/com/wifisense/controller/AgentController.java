@@ -6,6 +6,7 @@ import com.wifisense.dto.AgentReportAck;
 import com.wifisense.dto.AgentReportRequest;
 import com.wifisense.service.AgentPairingService;
 import com.wifisense.service.AgentReportService;
+import com.wifisense.service.SensorReportService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import org.springframework.http.CacheControl;
@@ -16,7 +17,8 @@ import org.springframework.web.bind.annotation.*;
 
 /**
  * Entry point of the WiFiSense agent. It has no user session: it authenticates with its own key in the X-Agent-Key
- * header, and the key decides which network the report belongs to (the body never says it).
+ * header, and the key decides which network the report belongs to (the body never says it): a network of Mi Wi-Fi,
+ * or a team network when the agent is that network's sensor.
  */
 @RestController
 @RequestMapping("/api/agent")
@@ -25,10 +27,12 @@ public class AgentController {
     public static final String KEY_HEADER = "X-Agent-Key";
 
     private final AgentReportService service;
+    private final SensorReportService sensors;
     private final AgentPairingService pairing;
 
-    public AgentController(AgentReportService service, AgentPairingService pairing) {
+    public AgentController(AgentReportService service, SensorReportService sensors, AgentPairingService pairing) {
         this.service = service;
+        this.sensors = sensors;
         this.pairing = pairing;
     }
 
@@ -44,6 +48,6 @@ public class AgentController {
     @ResponseStatus(HttpStatus.CREATED)
     public AgentReportAck report(@RequestHeader(value = KEY_HEADER, required = false) String key,
                                  @Valid @RequestBody AgentReportRequest request) {
-        return service.receive(key, request);
+        return sensors.receive(key, request).orElseGet(() -> service.receive(key, request));
     }
 }

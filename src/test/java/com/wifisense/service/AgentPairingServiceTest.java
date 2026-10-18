@@ -31,7 +31,8 @@ class AgentPairingServiceTest {
     private final AgentPairingCodeRepository codes = mock(AgentPairingCodeRepository.class);
     private final HomeNetworkRepository networks = mock(HomeNetworkRepository.class);
     private final AgentKeyService keys = mock(AgentKeyService.class);
-    private final AgentPairingService service = new AgentPairingService(codes, networks, keys,
+    private final NetworkSensorService sensors = mock(NetworkSensorService.class);
+    private final AgentPairingService service = new AgentPairingService(codes, networks, keys, sensors,
             Clock.fixed(NOW, ZoneOffset.UTC));
     private final HomeNetwork casa = new HomeNetwork(mock(User.class), "Casa", null, null);
 
@@ -83,6 +84,17 @@ class AgentPairingServiceTest {
             assertThatThrownBy(() -> service.pair(code, "1.2.3.4")).isInstanceOf(InvalidPairingCodeException.class);
         }
         verify(keys, never()).issue(any());
+    }
+
+    @Test
+    void aCodeFromTheTeamPanelInstallsTheSensorOfThatNetwork() {
+        AgentPairResponse sensor = new AgentPairResponse("wsa_" + "s".repeat(43), "wsa_ssss", "Biblioteca");
+        when(sensors.pair("K7QM4RZD")).thenReturn(Optional.of(sensor));
+
+        assertThat(service.pair("k7qm-4rzd", "1.2.3.4")).isSameAs(sensor);
+        verify(keys, never()).issue(any());
+        // a code that is neither of Mi Wi-Fi nor of a sensor is still invalid
+        assertThatThrownBy(() -> service.pair("ZZZZ-ZZZZ", "1.2.3.4")).isInstanceOf(InvalidPairingCodeException.class);
     }
 
     @Test

@@ -53,4 +53,15 @@ class AgentReportThrottleTest {
 
         assertThatNoException().isThrownBy(() -> throttle.acquire(1L));
     }
+
+    @Test
+    void aSensorAndAnAgentWithTheSameIdAreCountedApart() {
+        throttle.acquire(1L);
+
+        assertThatNoException().isThrownBy(() -> throttle.acquireSensor(1L));
+        assertThatThrownBy(() -> throttle.acquireSensor(1L)).isInstanceOf(AgentReportLimitException.class);
+        throttle.forgetSensor(1L);
+        assertThatNoException().isThrownBy(() -> throttle.acquireSensor(1L));
+        assertThatThrownBy(() -> throttle.acquire(1L)).isInstanceOf(AgentReportLimitException.class);
+    }
 }

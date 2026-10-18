@@ -17,6 +17,14 @@ public record MetricSummary(Double average, Double min, Double max, Double p95, 
                 sorted.size());
     }
 
+    /** From values already aggregated (by the database): only the average is rounded, as above. */
+    public static MetricSummary of(Double average, Double min, Double max, Double p95, int samples) {
+        if (samples == 0 || average == null) {
+            return new MetricSummary(null, null, null, null, 0);
+        }
+        return new MetricSummary(round(average), min, max, p95, samples);
+    }
+
     private static double round(double value) {
         return Math.round(value * 100) / 100.0;
     }

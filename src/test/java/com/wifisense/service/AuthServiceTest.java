@@ -1,5 +1,6 @@
 package com.wifisense.service;
 
+import com.wifisense.dto.AuthResponse;
 import com.wifisense.dto.LoginRequest;
 import com.wifisense.dto.RegisterRequest;
 import com.wifisense.security.LoginAttemptService;
@@ -9,11 +10,13 @@ import com.wifisense.security.PasswordCipher;
 import com.wifisense.security.PasswordPolicy;
 import com.wifisense.security.RegistrationBlockedException;
 import com.wifisense.security.RegistrationThrottle;
-import com.wifisense.security.TokenService;
+import com.wifisense.security.SessionService;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
@@ -21,11 +24,12 @@ import static org.mockito.Mockito.*;
 class AuthServiceTest {
 
     private final AuthenticationManager manager = mock(AuthenticationManager.class);
+    private final SessionService sessions = mock(SessionService.class);
     private final LoginAttemptService attempts = mock(LoginAttemptService.class);
     private final UserService users = mock(UserService.class);
     private final RegistrationThrottle registrations = mock(RegistrationThrottle.class);
     private final PasswordCipher cipher = mock(PasswordCipher.class);
-    private final AuthService service = new AuthService(manager, mock(TokenService.class), users,
+    private final AuthService service = new AuthService(manager, sessions, users,
             attempts, new PasswordPolicy(), registrations, cipher);
 
     {
@@ -95,5 +99,18 @@ class AuthServiceTest {
         assertThatThrownBy(() -> service.login(new LoginRequest("analyst", null, "c1", "sealed"), "1.2.3.4"))
                 .isInstanceOf(BadCredentialsException.class);
         verify(manager).authenticate(argThat(token -> "Redes#2026a".equals(token.getCredentials())));
+    }
+
+    @Test
+    void aSuccessfulLoginOpensTheSessionWithTheNameAsStored() {
+        AuthResponse session = new AuthResponse("jwt", java.time.Instant.EPOCH, null, "refresh",
+                java.time.Instant.EPOCH);
+        when(manager.authenticate(any())).thenReturn(new UsernamePasswordAuthenticationToken("Carlos", null,
+                java.util.List.of()));
+        when(sessions.start("Carlos")).thenReturn(session);
+
+        // typed in another case: the account is found anyway and the session carries the stored name
+        assertThat(service.login(new LoginRequest(" CARLOS ", "Redes#2026a"), "1.2.3.4")).isSameAs(session);
+        verify(attempts).recordSuccess("CARLOS", "1.2.3.4");
     }
 }

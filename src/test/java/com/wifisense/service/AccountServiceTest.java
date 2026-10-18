@@ -11,7 +11,7 @@ import com.wifisense.security.LoginAttemptService;
 import com.wifisense.security.LoginBlockedException;
 import com.wifisense.security.PasswordCipher;
 import com.wifisense.security.PasswordPolicy;
-import com.wifisense.security.TokenService;
+import com.wifisense.security.SessionService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -35,9 +35,9 @@ class AccountServiceTest {
     private final PasswordEncoder encoder = mock(PasswordEncoder.class);
     private final PasswordCipher cipher = mock(PasswordCipher.class);
     private final LoginAttemptService attempts = mock(LoginAttemptService.class);
-    private final TokenService tokens = mock(TokenService.class);
+    private final SessionService sessions = mock(SessionService.class);
     private final AccountService service = new AccountService(users, new ContactPolicy(), new PasswordPolicy(), encoder,
-            cipher, attempts, tokens, Clock.fixed(NOW, ZoneOffset.UTC));
+            cipher, attempts, sessions, Clock.fixed(NOW, ZoneOffset.UTC));
     private final User ana = new User("ana", "ana@wifisense.local", "hash", User.Role.USER);
 
     @BeforeEach
@@ -47,7 +47,8 @@ class AccountServiceTest {
         when(cipher.reveal(any(), any(), any())).thenAnswer(invocation -> invocation.getArgument(0));
         when(encoder.matches("Actual#2026a", "hash")).thenReturn(true);
         when(encoder.encode(any())).thenReturn("new-hash");
-        when(tokens.issue(any())).thenReturn(new TokenService.IssuedToken("jwt", NOW.plusSeconds(3600)));
+        when(sessions.start(ana)).thenReturn(new AuthResponse("jwt", NOW.plusSeconds(3600), null, "refresh",
+                NOW.plusSeconds(86_400)));
     }
 
     @Test
@@ -86,6 +87,11 @@ class AccountServiceTest {
         assertThat(ana.getPasswordHash()).isEqualTo("new-hash");
         assertThat(ana.getPasswordChangedAt()).isEqualTo(NOW);
         assertThat(session.token()).isEqualTo("jwt");
+        assertThat(session.refreshToken()).isEqualTo("refresh");
+        // every other session closes first; then this browser gets a new one
+        var order = inOrder(sessions);
+        order.verify(sessions).endAll(4L);
+        order.verify(sessions).start(ana);
     }
 
     @Test
@@ -98,6 +104,7 @@ class AccountServiceTest {
                 new PasswordChangeRequest("Actual#2026a", null, null, "debil", null, null), "1.2.3.4"))
                 .isInstanceOf(InvalidAccountException.class);
         assertThat(ana.getPasswordHash()).isEqualTo("hash");
+        verifyNoInteractions(sessions);
     }
 
     @Test

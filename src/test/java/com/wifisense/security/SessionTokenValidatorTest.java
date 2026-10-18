@@ -19,8 +19,12 @@ class SessionTokenValidatorTest {
     private final SessionTokenValidator validator = new SessionTokenValidator(users);
 
     private static Jwt token(String subject, Instant issuedAt) {
+        return token(subject, issuedAt, "USER");
+    }
+
+    private static Jwt token(String subject, Instant issuedAt, String role) {
         return Jwt.withTokenValue("t").header("alg", "HS256").subject(subject).issuedAt(issuedAt)
-                .expiresAt(issuedAt.plusSeconds(3600)).build();
+                .expiresAt(issuedAt.plusSeconds(3600)).claim("roles", java.util.List.of(role)).build();
     }
 
     @Test
@@ -49,5 +53,21 @@ class SessionTokenValidatorTest {
         when(users.findByUsername("ana")).thenReturn(Optional.of(new User("ana", "a@b.co", "h", User.Role.USER)));
 
         assertThat(validator.validate(token("ana", Instant.now())).hasErrors()).isFalse();
+    }
+
+    @Test
+    void aRoleChangeEndsTheSessionsIssuedWithTheOldRole() {
+        User eva = new User("eva", "eva@wifisense.local", "h", User.Role.ANALYST);
+        when(users.findByUsername("eva")).thenReturn(Optional.of(eva));
+        Instant now = Instant.now();
+
+        assertThat(validator.validate(token("eva", now, "ANALYST")).hasErrors()).isFalse();
+        eva.changeRole(User.Role.VIEWER);
+        assertThat(validator.validate(token("eva", now, "ANALYST")).hasErrors()).isTrue();
+        assertThat(validator.validate(token("eva", now, "VIEWER")).hasErrors()).isFalse();
+        // a token without roles was not issued by this backend
+        Jwt noRoles = Jwt.withTokenValue("t").header("alg", "HS256").subject("eva").issuedAt(now)
+                .expiresAt(now.plusSeconds(60)).build();
+        assertThat(validator.validate(noRoles).hasErrors()).isTrue();
     }
 }

@@ -3,6 +3,7 @@ package com.wifisense.controller;
 import com.wifisense.dto.NetworkRequest;
 import com.wifisense.dto.NetworkResponse;
 import com.wifisense.model.NetworkStatus;
+import com.wifisense.network.DataSourceType;
 import com.wifisense.service.NetworkService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
@@ -23,6 +24,12 @@ public class NetworkController {
     @GetMapping
     public List<NetworkResponse> list(@RequestParam(required = false) NetworkStatus status) {
         return networkService.list(status);
+    }
+
+    /** What the form offers as data source: the sensor, plus the demo sources when they are enabled. */
+    @GetMapping("/sources")
+    public List<DataSourceType> sources() {
+        return networkService.selectableSources();
     }
 
     @GetMapping("/{id}")

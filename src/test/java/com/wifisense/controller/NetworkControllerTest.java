@@ -135,4 +135,26 @@ class NetworkControllerTest {
                         .contentType(MediaType.APPLICATION_JSON).content("{\"type\":\"THRESHOLD\"}"))
                 .andExpect(status().isForbidden());
     }
+
+    @Test
+    void theFormOffersOnlyTheSourcesThatCanBeUsed() throws Exception {
+        when(networkService.selectableSources()).thenReturn(List.of(DataSourceType.AGENT));
+
+        mvc.perform(get("/api/networks/sources").with(as("ANALYST")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0]").value("AGENT"));
+    }
+
+    @Test
+    void aSimulatedNetworkIsRefusedWithAReason() throws Exception {
+        when(networkService.create(any())).thenThrow(new IllegalArgumentException(
+                "Las redes simuladas están desactivadas: registra la red con su sensor WiFiSense."));
+
+        mvc.perform(post("/api/networks").with(as("ADMIN"))
+                        .contentType(MediaType.APPLICATION_JSON).content(VALID_NETWORK))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.detail").value(
+                        "Las redes simuladas están desactivadas: registra la red con su sensor WiFiSense."));
+    }
 }

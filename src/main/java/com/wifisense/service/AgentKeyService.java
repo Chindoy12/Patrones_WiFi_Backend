@@ -53,10 +53,8 @@ public class AgentKeyService {
         keys.findByNetworkId(networkId).ifPresent(old -> throttle.forget(old.getId()));
         keys.deleteByNetworkId(networkId);  // clears the persistence context, so the network is referenced again below
         HomeNetwork network = networks.getReferenceById(networkId);
-        byte[] secret = new byte[32];
-        random.nextBytes(secret);
-        String key = PREFIX + Base64.getUrlEncoder().withoutPadding().encodeToString(secret);
-        AgentKey saved = keys.saveAndFlush(new AgentKey(network, hash(key), key.substring(0, VISIBLE_CHARS)));
+        String key = generate(random);
+        AgentKey saved = keys.saveAndFlush(new AgentKey(network, hash(key), visiblePart(key)));
         return new AgentKeyCreated(key, saved.getKeyPrefix(), saved.getCreatedAt());
     }
 
@@ -70,7 +68,7 @@ public class AgentKeyService {
     /** The key of the agent that sent a report; malformed, unknown and revoked keys fail the same way. */
     @Transactional(readOnly = true)
     public AgentKey authenticate(String key) {
-        if (key == null || !FORMAT.matcher(key).matches()) {
+        if (!wellFormed(key)) {
             throw new InvalidAgentKeyException();
         }
         return keys.findByKeyHash(hash(key)).orElseThrow(InvalidAgentKeyException::new);
@@ -79,6 +77,21 @@ public class AgentKeyService {
     private HomeNetwork ownNetwork(String username, Long networkId) {
         return networks.findByIdAndOwner_Username(networkId, username)
                 .orElseThrow(() -> new ResourceNotFoundException("la red", networkId));
+    }
+
+    /** A new key: 256 random bits. Agents of Mi Wi-Fi and sensors of team networks use the same format. */
+    static String generate(SecureRandom random) {
+        byte[] secret = new byte[32];
+        random.nextBytes(secret);
+        return PREFIX + Base64.getUrlEncoder().withoutPadding().encodeToString(secret);
+    }
+
+    static String visiblePart(String key) {
+        return key.substring(0, VISIBLE_CHARS);
+    }
+
+    static boolean wellFormed(String key) {
+        return key != null && FORMAT.matcher(key).matches();
     }
 
     static String hash(String key) {

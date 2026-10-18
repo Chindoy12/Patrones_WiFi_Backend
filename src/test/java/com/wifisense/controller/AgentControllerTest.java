@@ -7,6 +7,7 @@ import com.wifisense.service.AgentPairingService;
 import com.wifisense.service.AgentReportLimitException;
 import com.wifisense.service.AgentReportService;
 import com.wifisense.service.InvalidAgentKeyException;
+import com.wifisense.service.SensorReportService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -17,6 +18,8 @@ import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+
+import java.util.Optional;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -45,6 +48,8 @@ class AgentControllerTest {
     @MockitoBean
     private AgentPairingService pairing;
     @MockitoBean
+    private SensorReportService sensors;
+    @MockitoBean
     private UserDetailsService userDetailsService;
 
     @Test
@@ -57,6 +62,29 @@ class AgentControllerTest {
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.securityGrade").value("SECURE"))
                 .andExpect(jsonPath("$.summary").value("2 equipos conectados."));
+    }
+
+    @Test
+    void theSensorOfATeamNetworkReportsToTheSameAddress() throws Exception {
+        when(sensors.receive(eq(KEY), any())).thenReturn(Optional.of(new AgentReportAck(31L, 2, 0, null, null, false,
+                "Sensor de «Biblioteca»: medición guardada. Estado: normal.")));
+
+        mvc.perform(post("/api/agent/reports").header("X-Agent-Key", KEY).contentType(MediaType.APPLICATION_JSON)
+                        .content(REPORT.replace("\"openPorts\":[80,443]}", "\"openPorts\":[80,443],"
+                                + "\"trafficBytes\":5242880,\"trafficPackets\":4100,"
+                                + "\"protocolPackets\":[{\"protocol\":\"TCP\",\"packets\":3900}]}")))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.summary").value("Sensor de «Biblioteca»: medición guardada. Estado: normal."));
+        verifyNoInteractions(service);
+    }
+
+    @Test
+    void aProtocolTheAgentCannotCountIsRejected() throws Exception {
+        mvc.perform(post("/api/agent/reports").header("X-Agent-Key", KEY).contentType(MediaType.APPLICATION_JSON)
+                        .content(REPORT.replace("\"openPorts\":[80,443]}",
+                                "\"protocolPackets\":[{\"protocol\":\"HTTP/9\",\"packets\":-1}]}")))
+                .andExpect(status().isBadRequest());
+        verifyNoInteractions(service, sensors);
     }
 
     @Test

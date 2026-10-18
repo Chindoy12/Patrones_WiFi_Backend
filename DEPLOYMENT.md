@@ -22,6 +22,7 @@ Usuario ─► Frontend (Vercel) ─► Backend (contenedor) ─► PostgreSQL a
    remitente verificado en Brevo) y `FRONTEND_URL` (la URL de Vercel, a donde apunta el enlace). Sin ellas la
    recuperación responde igual pero no envía nada (y el log lo advierte). Opcionales, con buenos valores por
    defecto: `JWT_TTL` (8h), `SESSION_REFRESH_TTL` (14d), `MONITORING_RETENTION` (90d) y `DATABASE_POOL_SIZE` (10).
+   **No** definas `DEMO_DATA_SOURCES` en producción: sin ella las redes simuladas no se pueden registrar ni se miden.
 3. **Deploy Backend.** Crea un servicio Docker desde `WiFiSense-backend` (usa su `Dockerfile`: compila con Maven y corre en Java 21 LTS). Puerto `8080`
    o la variable `PORT` de la plataforma. Health check: `/actuator/health`.
 4. **Deploy AI service.** Crea un servicio Docker desde `WiFiSense-ai`. Variables: `AI_API_KEY` (la misma del
@@ -34,7 +35,8 @@ Usuario ─► Frontend (Vercel) ─► Backend (contenedor) ─► PostgreSQL a
 7. **Configure VITE_API_URL.** En Vercel → Environment Variables: `VITE_API_URL` = URL pública del backend.
    Vuelve a desplegar (Vite la incrusta en el build).
 8. **Test Frontend → Backend.** Abre la URL de Vercel, inicia sesión y revisa el panel. Un error de CORS indica que falta la URL de Vercel en `CORS_ALLOWED_ORIGINS`.
-9. **Test Backend → Database.** `GET /actuator/health` debe responder `UP`; la página Redes debe listar datos.
+9. **Test Backend → Database.** `GET /actuator/health` debe responder `UP`; la página Redes abre (vacía hasta que el
+   equipo registre su primera red).
 10. **Test Backend → AI.** En Análisis ejecuta “Inteligencia artificial”. Un 503 indica `AI_SERVICE_URL` o
     `AI_API_KEY` incorrectos; revisa los logs del backend.
 
@@ -42,10 +44,15 @@ Usuario ─► Frontend (Vercel) ─► Backend (contenedor) ─► PostgreSQL a
     en un computador de la casa y escribe el código: en unos minutos la página muestra los equipos conectados.
     Un código vencido o mal escrito se rechaza; un 500 suele ser que faltan migraciones de la base.
 
-12. **Test recuperación.** En la página de inicio de sesión pulsa «¿Olvidaste tu contraseña?», escribe un correo
+12. **Test sensor de una red del equipo.** En Redes → «Registrar red» (la sede y la zona se crean ahí mismo), luego
+    «Sensor» → «Conectar sensor». Instala el agente en un computador con Windows conectado a esa red y escribe el
+    código: el panel pasa a «Conectado» y en Mediciones aparece la primera medición con fuente «Sensor WiFiSense».
+    Desde el segundo reporte llegan el tráfico y los protocolos (TCP, UDP, ICMP) de ese computador.
+
+13. **Test recuperación.** En la página de inicio de sesión pulsa «¿Olvidaste tu contraseña?», escribe un correo
     registrado y revisa la bandeja (y spam). El enlace abre «Crea una contraseña nueva».
 
-13. **Test sesiones.** Inicia sesión escribiendo el usuario con otras mayúsculas (`ANA` en vez de `ana`): debe
+14. **Test sesiones.** Inicia sesión escribiendo el usuario con otras mayúsculas (`ANA` en vez de `ana`): debe
     entrar. `POST /api/auth/refresh` con el `refreshToken` del inicio de sesión responde un par nuevo; el mismo
     refresh token una segunda vez responde 401 «Tu sesión terminó».
 

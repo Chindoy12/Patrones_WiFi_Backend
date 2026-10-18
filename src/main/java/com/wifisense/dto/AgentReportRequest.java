@@ -38,7 +38,32 @@ public record AgentReportRequest(
         List<@NotNull @Pattern(regexp = "^[0-9a-f]{24}$", message = "Huella de equipo inválida.") String> deviceHashes,
         @Size(max = 256, message = "Demasiados equipos en un reporte.") @Valid List<DeviceInfo> devices,
         @Size(max = 64) List<@NotNull @Min(1) @Max(65535) Integer> openPorts,
-        @Size(max = 60, message = "Demasiados canales en un reporte.") @Valid List<ChannelCount> channelCounts) {
+        @Size(max = 60, message = "Demasiados canales en un reporte.") @Valid List<ChannelCount> channelCounts,
+        @Min(0) @Max(10_000_000_000_000L) Long trafficBytes,
+        @Min(0) @Max(100_000_000_000L) Long trafficPackets,
+        @Size(max = 8, message = "Demasiados protocolos en un reporte.") @Valid List<ProtocolCount> protocolPackets) {
+
+    /** Report of an agent older than 1.4.0, which did not measure the traffic of its computer. */
+    public AgentReportRequest(String agentVersion, String platform, String ssid, String authentication, String cipher,
+                              String band, Integer channel, Integer signalDbm, Integer signalPercent,
+                              Double rxRateMbps, Double txRateMbps, Integer neighborsSameChannel,
+                              Integer neighborsTotal, String wifiNote, Double latencyMs, Double jitterMs,
+                              Double packetLossPct, Double gatewayLatencyMs, Integer deviceCount,
+                              List<String> deviceHashes, List<DeviceInfo> devices, List<Integer> openPorts,
+                              List<ChannelCount> channelCounts) {
+        this(agentVersion, platform, ssid, authentication, cipher, band, channel, signalDbm, signalPercent, rxRateMbps,
+                txRateMbps, neighborsSameChannel, neighborsTotal, wifiNote, latencyMs, jitterMs, packetLossPct,
+                gatewayLatencyMs, deviceCount, deviceHashes, devices, openPorts, channelCounts, null, null, null);
+    }
+
+    /**
+     * Packets of one protocol that the agent's computer sent and received since its previous report, read from the
+     * operating system's counters (no capture program needed). Only the sensor of a team network stores them.
+     */
+    public record ProtocolCount(
+            @NotNull @Pattern(regexp = "^(TCP|UDP|ICMP|OTHER)$", message = "Protocolo desconocido.") String protocol,
+            @NotNull @Min(0) @Max(100_000_000_000L) Long packets) {
+    }
 
     /**
      * One connected device: its fingerprint and, when the agent could read them, the maker and the name the device
@@ -116,6 +141,10 @@ public record AgentReportRequest(
         }
         String value = cipher.trim();
         return value.length() <= 20 ? value : value.substring(0, 20);
+    }
+
+    public List<ProtocolCount> protocolPacketsOrEmpty() {
+        return protocolPackets == null ? List.of() : protocolPackets;
     }
 
     public List<Integer> openPortsOrEmpty() {

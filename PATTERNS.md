@@ -28,11 +28,11 @@ y aplica a cualquier producto la misma cadena de decoradores.
 
 **Classes.**
 - Creator: `DataSourceCreator`
-- Concrete creators: `SimulationDataSourceCreator`, `SystemDataSourceCreator`, `RouterApiDataSourceCreator`,
-  `SnmpDataSourceCreator`, `TrafficCaptureDataSourceCreator`
+- Concrete creators: `AgentSensorDataSourceCreator`, `SimulationDataSourceCreator`, `SystemDataSourceCreator`,
+  `RouterApiDataSourceCreator`, `SnmpDataSourceCreator`, `TrafficCaptureDataSourceCreator`
 - Product: `NetworkDataSource`
-- Concrete products: `SimulationDataSource`, `SystemDataSource`, `RouterApiDataSource`, `SnmpDataSource`,
-  `TrafficCaptureDataSource`
+- Concrete products: `AgentSensorDataSource`, `SimulationDataSource`, `SystemDataSource`, `RouterApiDataSource`,
+  `SnmpDataSource`, `TrafficCaptureDataSource`
 - Cliente: `NetworkDataSourceProvider` (elige el creador por `DataSourceType` con un `EnumMap`)
 
 **Where.** `com.wifisense.network`
@@ -46,6 +46,9 @@ el proyecto ya prevé cinco fuentes con dependencias distintas.
 **Estado real.** `SimulationDataSource` está completa. `SystemDataSource` es real pero parcial (mide latencia,
 jitter y pérdida hacia un host de prueba; no puede medir señal ni ancho de banda). Router API, SNMP y captura de
 tráfico están preparadas y lanzan `DataSourceUnavailableException` con un mensaje claro (parte del 20 % pendiente).
+`AgentSensorDataSource` es la fuente de las redes del equipo: no se consulta, el sensor (el agente WiFiSense) envía
+sus mediciones; por eso su `collect()` explica que la red la mide su sensor y el monitoreo programado no la recorre
+(`DataSourcePolicy.collectsAutomatically`). Simulación y sistema solo se pueden elegir con `DEMO_DATA_SOURCES=true`.
 
 ---
 

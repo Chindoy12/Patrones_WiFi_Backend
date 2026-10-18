@@ -66,16 +66,19 @@ y cierre de sesión. «equipo» = ADMIN, ANALYST o VIEWER. Para un usuario final
 | GET | `/api/my/account` | USER: usuario, correo de recuperación y celular |
 | PUT | `/api/my/account/contact`, `/api/my/account/password` | USER: cambiar correo/celular o contraseña, confirmando con la contraseña actual |
 | POST | `/api/my/networks/{id}/agent/pairing` | USER: código de 8 caracteres (15 min, un uso) para instalar el agente |
-| POST | `/api/agent/pair` `{"code"}` | Instalador del agente: cambia el código por la clave (sin sesión, límite de intentos) |
+| POST | `/api/agent/pair` `{"code"}` | Instalador del agente: cambia el código por la clave (sin sesión, límite de intentos). El mismo instalador sirve para Mi Wi-Fi y para el sensor de una red del equipo: el código decide cuál |
 | GET | `/api/my/networks/{id}/agent` | USER: último reporte del agente, historial, equipos conectados (con fabricante, nombre y si usan MAC privada), auditoría de seguridad y canal recomendado |
 | POST / DELETE | `/api/my/networks/{id}/agent/key` | USER: crea (la clave se muestra una sola vez, `Cache-Control: no-store`) o revoca la clave del agente |
-| POST | `/api/agent/reports` (cabecera `X-Agent-Key`) | Agente WiFiSense: sin sesión; la clave decide la red. 201, 401 o 429 con `Retry-After` |
+| POST | `/api/agent/reports` (cabecera `X-Agent-Key`) | Agente WiFiSense: sin sesión; la clave decide la red (de un usuario o del equipo). 201, 401 o 429 con `Retry-After` |
 | GET / POST / PATCH / DELETE | `/api/users`, `/api/users/{id}/role`, `/api/users/{id}` | ADMIN (solo cuentas del equipo, máximo 3) |
 | GET / POST | `/api/locations`, `/api/locations/{id}/zones`, `/api/zones` | GET equipo · POST ADMIN |
 | GET / POST / PUT / DELETE | `/api/networks[/{id}]` | GET equipo · resto ADMIN |
+| GET | `/api/networks/sources` | equipo: fuentes que se pueden elegir al registrar una red (en producción solo `AGENT`) |
+| GET | `/api/networks/{id}/sensor` | equipo: si la red tiene sensor, si está reportando, último reporte, versión y sistema |
+| POST / DELETE | `/api/networks/{id}/sensor/pairing`, `/api/networks/{id}/sensor` | ADMIN: código de 8 caracteres (15 min, un uso) para instalar el sensor · quitar el sensor (su clave deja de servir) |
 | GET / POST | `/api/devices?networkId&limit`, `/api/devices/{id}/sessions?limit` | GET equipo (máximo 500, los más recientes primero) · POST ADMIN |
 | GET | `/api/networks/{id}/measurements?from&to&limit` | equipo |
-| POST | `/api/networks/{id}/measurements/collect` | ADMIN, ANALYST |
+| POST | `/api/networks/{id}/measurements/collect` | ADMIN, ANALYST (una red con sensor responde 503: la mide su sensor) |
 | GET | `/api/networks/{id}/traffic`, `/api/networks/{id}/protocols` | equipo |
 | POST | `/api/networks/{id}/analyses` `{"type":"THRESHOLD|STATISTICAL|ANOMALY_DETECTION"}` | ADMIN, ANALYST |
 | GET | `/api/analyses?networkId&limit`, `/api/analyses/strategies`, `/api/anomalies` | equipo |
@@ -116,6 +119,13 @@ Errores: `application/problem+json` con `detail` y, en validación, `errors` por
   con los mismos rangos que la base. Las MAC nunca llegan: solo huellas con sal. Los reportes y equipos de más de 30
   días se borran cada noche (`AgentRetentionJob`). Las llamadas a la IA se hacen fuera de la transacción y, si la IA
   no responde, el reporte se guarda sin veredictos.
+- **Redes del equipo con sensor (sin datos simulados).** Una red del equipo se mide con su **sensor**: el agente
+  WiFiSense instalado en un computador conectado a ella (fuente `AGENT`, V34–V35). El administrador genera un código
+  en la página Redes, el instalador lo cambia por una clave propia de esa red (`network_sensors`, solo SHA-256) y cada
+  reporte se guarda como una medición real con su tráfico y protocolos, seguida de un análisis por umbrales
+  (`SensorReportService`). Una clave de sensor solo sirve para su red, puede reportar como máximo una vez cada 50 s y
+  quitar el sensor la invalida al instante. Las fuentes simuladas no se pueden elegir ni se recolectan en producción
+  (`DataSourcePolicy`); solo existen con `DEMO_DATA_SOURCES=true` para una demostración local.
 - **Recuperar la contraseña.** El enlace lleva 256 bits aleatorios; en la base solo queda su SHA-256 (V21), sirve
   una vez y vence en 30 minutos. La respuesta es la misma exista o no la cuenta, y el correo sale en segundo plano
   (`MailDispatcher`), así que ni el texto ni el tiempo de respuesta revelan quién está registrado. Máximo 5
@@ -225,6 +235,7 @@ pasar a HTTP/2 (h2c), uvicorn lo rechaza y descarta el cuerpo de la petición, y
 | `PLAIN_PASSWORDS_ALLOWED` | `true` (por defecto) / `false` | `false`: solo se aceptan contraseñas cifradas por la web |
 | `CORS_ALLOWED_ORIGINS` | `http://localhost:5173` | Orígenes del frontend, separados por coma |
 | `MONITORING_ENABLED` | `true` | Recolección y análisis automáticos |
+| `DEMO_DATA_SOURCES` | `false` (por defecto) | Solo en una demostración local: `true` permite registrar redes simuladas. En Railway no se define |
 | `BREVO_API_KEY` | `xkeysib-…` (solo en Railway) | Envío del correo de recuperación por la API de Brevo |
 | `MAIL_FROM` | un correo verificado como remitente en Brevo | Remitente del correo de recuperación |
 | `FRONTEND_URL` | `https://patrones-wi-fi-froned-coral.vercel.app` | A dónde apunta el enlace del correo |
@@ -251,18 +262,21 @@ No hay usuarios de demostración. Al arrancar se crea (o actualiza) el administr
 
 ## Pruebas
 
-`src/test/java` (convención Maven), 297 pruebas:
+`src/test/java` (convención Maven), 322 pruebas:
 
-- **Unitarias y de controladores (290):** fuentes de datos y decoradores, transiciones de estado, las tres
+- **Unitarias y de controladores (314):** fuentes de datos y decoradores, transiciones de estado, las tres
   estrategias, la fachada con mocks, observadores, ciclo de vida de alertas y `@WebMvcTest` que verifica seguridad por
   rol, validación y errores 404, el agente (claves, límite de reportes, equipos nuevos y con MAC privada, canal
   recomendado, IA caída), el panel del equipo con datos reales, las sesiones (rotación, copia detectada, cambio de
-  contraseña y de rol) y la limpieza nocturna por lotes.
-- **De integración con PostgreSQL real (7, paquete `integration`):** el backend completo contra una base creada con
+  contraseña y de rol), la limpieza nocturna por lotes y el sensor de las redes del equipo (código, clave, reporte
+  convertido en medición con tráfico y protocolos, fuentes permitidas).
+- **De integración con PostgreSQL real (8, paquete `integration`):** el backend completo contra una base creada con
   las migraciones de WiFiSense-database, conectado como `wifisense_app`. Prueban por HTTP el registro, el inicio de
   sesión sin importar mayúsculas, la renovación, la copia de un refresh token, el cierre de sesión, el cambio de
   contraseña y de rol; y en SQL que un refresh token se gasta una sola vez, que las estadísticas del reporte calculadas
   por PostgreSQL son iguales a las de Java y que la limpieza borra solo lo viejo (las alertas abiertas se quedan).
+  Además, el recorrido completo del sensor: registrar la red, rechazar una simulada, instalar con el código, reportar
+  y encontrar la medición, el tráfico y los protocolos en la base; quitar el sensor deja la clave sin efecto.
   Se ejecutan cuando existe `WIFISENSE_IT_DATABASE_URL`.
 
 **GitHub Actions** (`.github/workflows/backend.yml`) corre en cada Pull Request y en `main`: crea PostgreSQL 16 con las
@@ -271,7 +285,8 @@ integración no corrieron) y construye la imagen Docker que despliega Railway.
 
 ## Pendiente
 
-Fuentes Router API (con Adapter por fabricante), SNMP y captura de tráfico; pruebas de carga; que la web use el refresh
+Nombres de los equipos conectados en las redes del equipo (fase del agente y la IA); fuentes Router API y SNMP; el
+sensor mide el tráfico del computador donde está instalado, no el de toda la red; pruebas de carga; que la web use el refresh
 token (fase del frontend) para bajar `JWT_TTL` a 15 minutos.
 
 Despliegue: ver [DEPLOYMENT.md](DEPLOYMENT.md).

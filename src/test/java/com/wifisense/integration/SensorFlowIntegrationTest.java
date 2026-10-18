@@ -59,9 +59,13 @@ class SensorFlowIntegrationTest extends PostgresIntegrationTest {
         String key = paired.get("key").asText();
         call(post("/api/agent/pair"), null, Map.of("code", code), 400);  // a code works once
 
+        String laptop = "b".repeat(24);
         JsonNode ack = report(key, Map.of("trafficBytes", 10_485_760, "trafficPackets", 9_000,
                 "protocolPackets", List.of(Map.of("protocol", "TCP", "packets", 8_000),
-                        Map.of("protocol", "UDP", "packets", 950), Map.of("protocol", "ICMP", "packets", 50))), 201);
+                        Map.of("protocol", "UDP", "packets", 950), Map.of("protocol", "ICMP", "packets", 50)),
+                "deviceHashes", List.of("a".repeat(24), laptop), "openPorts", List.of(80),
+                "devices", List.of(Map.of("id", "a".repeat(24), "privateMac", true),
+                        Map.of("id", laptop, "vendor", "Lenovo", "name", "PC-Lab", "privateMac", false))), 201);
         assertThat(ack.get("summary").asText()).startsWith("Sensor de «" + place + "»: medición guardada.");
 
         Map<String, Object> stored = jdbc.queryForMap("SELECT latency_ms, signal_strength_dbm, bandwidth_mbps, "
@@ -76,6 +80,17 @@ class SensorFlowIntegrationTest extends PostgresIntegrationTest {
                 .containsExactly("ICMP=50", "TCP=8000", "UDP=950");
         assertThat(jdbc.queryForObject("SELECT count(*) FROM analysis_results WHERE network_id = ?", Long.class, id))
                 .isEqualTo(1);
+
+        // what the sensor sees, as in Mi Wi-Fi: the report and the devices, never a MAC address
+        JsonNode overview = call(get("/api/networks/" + id + "/sensor/overview"), admin, null, 200);
+        assertThat(overview.get("latest").get("deviceCount").asInt()).isEqualTo(6);
+        assertThat(overview.get("latest").get("details").get("openPorts").toString()).isEqualTo("[80]");
+        assertThat(overview.get("devices")).hasSize(2);
+        assertThat(overview.toString()).contains("PC-Lab").doesNotContainIgnoringCase("mac\":\"");
+        call(put("/api/networks/" + id + "/sensor/devices/" + laptop), admin,
+                Map.of("label", "Portátil del laboratorio", "authorized", false), 200);
+        assertThat(jdbc.queryForObject("SELECT authorized FROM network_sensor_devices WHERE network_id = ? "
+                + "AND fingerprint = ?", Boolean.class, id, laptop)).isFalse();
 
         // the panel: the sensor is connected, and asking the backend to collect explains where the data comes from
         JsonNode sensor = call(get("/api/networks/" + id + "/sensor"), admin, null, 200);

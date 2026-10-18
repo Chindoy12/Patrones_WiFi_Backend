@@ -14,11 +14,14 @@ Usuario ─► Frontend (Vercel) ─► Backend (contenedor) ─► PostgreSQL a
    migraciones desde `WiFiSense-database`: `DATABASE_URL=postgresql://... ./apply.sh` (o Flyway con
    `FLYWAY_URL=jdbc:postgresql://...`). Ejecuta `--seed` solo en entornos de demostración.
 2. **Configure backend environment variables.** `DATABASE_URL` (formato `jdbc:postgresql://host:5432/db?sslmode=require`),
-   `DATABASE_USERNAME`, `DATABASE_PASSWORD`, `JWT_SECRET` (32+ caracteres aleatorios), `AI_API_KEY`,
+   `DATABASE_USERNAME` y `DATABASE_PASSWORD` (el usuario `wifisense_app` de permisos mínimos, creado con
+   `security/rol_aplicacion.sql` de `WiFiSense-database`; nunca el dueño de la base), `JWT_SECRET` (32+ caracteres
+   aleatorios), `AI_API_KEY`,
    `CORS_ALLOWED_ORIGINS` (la URL de Vercel), `ADMIN_USERNAME` y `ADMIN_PASSWORD` (cuenta de administrador).
    Para recuperar contraseñas por correo: `BREVO_API_KEY` (Brevo → SMTP & API → API keys), `MAIL_FROM` (un
    remitente verificado en Brevo) y `FRONTEND_URL` (la URL de Vercel, a donde apunta el enlace). Sin ellas la
-   recuperación responde igual pero no envía nada (y el log lo advierte).
+   recuperación responde igual pero no envía nada (y el log lo advierte). Opcionales, con buenos valores por
+   defecto: `JWT_TTL` (8h), `SESSION_REFRESH_TTL` (14d), `MONITORING_RETENTION` (90d) y `DATABASE_POOL_SIZE` (10).
 3. **Deploy Backend.** Crea un servicio Docker desde `WiFiSense-backend` (usa su `Dockerfile`: compila con Maven y corre en Java 21 LTS). Puerto `8080`
    o la variable `PORT` de la plataforma. Health check: `/actuator/health`.
 4. **Deploy AI service.** Crea un servicio Docker desde `WiFiSense-ai`. Variables: `AI_API_KEY` (la misma del
@@ -35,12 +38,19 @@ Usuario ─► Frontend (Vercel) ─► Backend (contenedor) ─► PostgreSQL a
 10. **Test Backend → AI.** En Análisis ejecuta “Inteligencia artificial”. Un 503 indica `AI_SERVICE_URL` o
     `AI_API_KEY` incorrectos; revisa los logs del backend.
 
-11. **Test Agent → Backend.** En Mi Wi-Fi crea la clave del agente, ejecuta `python wifisense_agent.py setup` y
-    `run --once` en un computador de la casa: debe imprimir `Enviado.` y la página mostrar los equipos conectados.
-    Un 401 es una clave mal copiada o revocada; un 500 suele ser que faltan las migraciones V17–V19.
+11. **Test Agent → Backend.** En Mi Wi-Fi → Agente WiFiSense pide el código de 8 caracteres, descarga el instalador
+    en un computador de la casa y escribe el código: en unos minutos la página muestra los equipos conectados.
+    Un código vencido o mal escrito se rechaza; un 500 suele ser que faltan migraciones de la base.
 
 12. **Test recuperación.** En la página de inicio de sesión pulsa «¿Olvidaste tu contraseña?», escribe un correo
     registrado y revisa la bandeja (y spam). El enlace abre «Crea una contraseña nueva».
+
+13. **Test sesiones.** Inicia sesión escribiendo el usuario con otras mayúsculas (`ANA` en vez de `ana`): debe
+    entrar. `POST /api/auth/refresh` con el `refreshToken` del inicio de sesión responde un par nuevo; el mismo
+    refresh token una segunda vez responde 401 «Tu sesión terminó».
+
+Antes de cada despliegue, GitHub Actions (workflow **Backend**) ya compiló, probó contra PostgreSQL con las migraciones
+reales y construyó la imagen Docker: si está en rojo, no se despliega.
 
 ## Comprobación de secretos
 

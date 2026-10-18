@@ -1,0 +1,89 @@
+# Checks every change of the backend before it can reach Railway: compiles it, runs the unit tests and the integration
+# tests against a real PostgreSQL 16 built with the team's migrations (repository Patrones_WiFi_db), connected as
+# wifisense_app, the least-privilege role production uses, and builds the Docker image Railway deploys.
+# Runs on every Pull Request and on main.
+name: Backend
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backend-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pruebas:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          # Throwaway database that lives only during this job; it is not a secret of the project.
+          POSTGRES_PASSWORD: solo-para-ci
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      ADMIN_URL: postgresql://postgres:solo-para-ci@localhost:5432/postgres
+      DATABASE_URL: postgresql://postgres:solo-para-ci@localhost:5432/wifisense
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Migraciones del repositorio de base de datos
+        uses: actions/checkout@v5
+        with:
+          repository: davidcampino06/Patrones_WiFi_db
+          path: base-de-datos
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+
+      - name: Base de datos con todas las migraciones y el rol de la aplicación
+        run: |
+          psql "$ADMIN_URL" -q -c "CREATE DATABASE wifisense"
+          bash base-de-datos/apply.sh --security
+          psql "$DATABASE_URL" -q -c "ALTER ROLE wifisense_app LOGIN PASSWORD 'solo-para-ci'"
+
+      - name: Compilar y probar (unitarias y de integración como wifisense_app)
+        env:
+          WIFISENSE_IT_DATABASE_URL: jdbc:postgresql://localhost:5432/wifisense
+          WIFISENSE_IT_DATABASE_USERNAME: wifisense_app
+          WIFISENSE_IT_DATABASE_PASSWORD: solo-para-ci
+        run: mvn -B -ntp verify
+
+      - name: Resumen de las pruebas
+        if: always()
+        shell: python3 {0}
+        run: |
+          import glob, os, xml.etree.ElementTree as ET
+          total = skipped = failed = integration = 0
+          for path in glob.glob("target/surefire-reports/TEST-*.xml"):
+              suite = ET.parse(path).getroot()
+              tests = int(suite.get("tests", 0))
+              total += tests
+              skipped += int(suite.get("skipped", 0))
+              failed += int(suite.get("failures", 0)) + int(suite.get("errors", 0))
+              if ".integration." in suite.get("name", ""):
+                  integration += tests - int(suite.get("skipped", 0))
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as summary:
+              summary.write(f"### Pruebas del backend\n- {total} pruebas, {failed} con fallos, {skipped} omitidas\n"
+                            f"- {integration} de ellas contra PostgreSQL como wifisense_app\n")
+          # without the database variables the integration tests are skipped silently: here that is a failure
+          if integration == 0:
+              raise SystemExit("Las pruebas de integración con PostgreSQL no se ejecutaron")
+
+      - name: Imagen Docker (la misma que construye Railway)
+        run: docker build -t wifisense-backend:ci .

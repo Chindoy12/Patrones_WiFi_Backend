@@ -7,6 +7,7 @@ import com.wifisense.model.Measurement;
 import com.wifisense.model.Network;
 import com.wifisense.model.ProtocolStatistic;
 import com.wifisense.model.TrafficObservation;
+import com.wifisense.network.DataSourceType;
 import com.wifisense.network.NetworkDataSource;
 import com.wifisense.network.NetworkDataSourceProvider;
 import com.wifisense.network.NetworkSnapshot;
@@ -20,7 +21,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 
-/** Write side: asks the network's data source for a reading and stores it. */
+/** Write side: stores the readings of a network, collected from its data source or sent by its sensor. */
 @Service
 public class MeasurementCollectionService {
 
@@ -42,19 +43,33 @@ public class MeasurementCollectionService {
         this.events = events;
     }
 
+    /** Asks the network's data source for a reading (pulled sources) and stores it. */
     @Transactional
     public MeasurementResponse collect(Long networkId) {
         Network network = networks.findById(networkId)
                 .orElseThrow(() -> new ResourceNotFoundException("la red", networkId));
         NetworkDataSource source = dataSources.forType(network.getDataSourceType());
-        NetworkSnapshot snapshot = source.collect(NetworkTarget.of(network));
+        return store(network, source.collect(NetworkTarget.of(network)), source.type());
+    }
 
-        Measurement measurement = measurements.save(Measurement.from(network, snapshot, source.type()));
+    /**
+     * Stores a reading that arrived by itself: the sensor of the network sent it. Same path as a collected one, so
+     * the alerts, the activity log and the network state react the same way.
+     */
+    @Transactional
+    public MeasurementResponse record(Long networkId, NetworkSnapshot snapshot, DataSourceType type) {
+        Network network = networks.findById(networkId)
+                .orElseThrow(() -> new ResourceNotFoundException("la red", networkId));
+        return store(network, snapshot, type);
+    }
+
+    private MeasurementResponse store(Network network, NetworkSnapshot snapshot, DataSourceType type) {
+        Measurement measurement = measurements.save(Measurement.from(network, snapshot, type));
         storeTraffic(network, snapshot);
         network.markCollected(snapshot.collectedAt());
 
         events.publish(new MeasurementCollectedEvent(network.getId(), network.getSsid(), measurement.getId(),
-                source.type(), snapshot.latencyMs(), snapshot.packetLossPct(), snapshot.collectedAt()));
+                type, snapshot.latencyMs(), snapshot.packetLossPct(), snapshot.collectedAt()));
         return MeasurementResponse.from(measurement);
     }
 

@@ -1,17 +1,25 @@
 package com.wifisense.service;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.wifisense.TestData;
+import com.wifisense.analysis.AiAnalysisClient;
+import com.wifisense.analysis.AiServiceUnavailableException;
 import com.wifisense.analysis.AnalysisType;
 import com.wifisense.analysis.NetworkAnalysisFacade;
 import com.wifisense.dto.AgentReportAck;
 import com.wifisense.dto.AgentReportRequest;
 import com.wifisense.dto.AnalysisResultResponse;
 import com.wifisense.dto.MeasurementResponse;
+import com.wifisense.model.Alert;
 import com.wifisense.model.Network;
 import com.wifisense.model.NetworkSensor;
 import com.wifisense.model.NetworkStatus;
+import com.wifisense.model.SensorReport;
 import com.wifisense.network.DataSourceType;
 import com.wifisense.network.NetworkSnapshot;
+import com.wifisense.repository.AlertRepository;
+import com.wifisense.repository.NetworkRepository;
+import com.wifisense.repository.SensorReportRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -33,13 +41,21 @@ class SensorReportServiceTest {
 
     private static final Instant NOW = Instant.parse("2026-10-18T10:05:00Z");
     private static final String KEY = "wsa_" + "s".repeat(43);
+    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final String PHONE = "aaaaaaaaaaaaaaaaaaaaaaaa";
+    private static final String LAPTOP = "bbbbbbbbbbbbbbbbbbbbbbbb";
 
     private final NetworkSensorService sensors = mock(NetworkSensorService.class);
     private final AgentReportThrottle throttle = mock(AgentReportThrottle.class);
     private final MeasurementCollectionService collection = mock(MeasurementCollectionService.class);
     private final NetworkAnalysisFacade analysis = mock(NetworkAnalysisFacade.class);
+    private final SensorDeviceService devices = mock(SensorDeviceService.class);
+    private final SensorReportRepository reports = mock(SensorReportRepository.class);
+    private final NetworkRepository networks = mock(NetworkRepository.class);
+    private final AlertRepository alerts = mock(AlertRepository.class);
+    private final AiAnalysisClient ai = mock(AiAnalysisClient.class);
     private final SensorReportService service = new SensorReportService(sensors, throttle, collection, analysis,
-            Clock.fixed(NOW, ZoneOffset.UTC));
+            devices, reports, networks, alerts, ai, JSON, Clock.fixed(NOW, ZoneOffset.UTC));
     private final Network library = TestData.network(5L, NetworkStatus.NORMAL);
     private final NetworkSensor sensor = new NetworkSensor(library, "a".repeat(64), "wsa_ssss");
 
@@ -47,14 +63,19 @@ class SensorReportServiceTest {
     void setUp() {
         ReflectionTestUtils.setField(sensor, "id", 8L);
         when(sensors.authenticate(KEY)).thenReturn(Optional.of(sensor));
+        when(networks.getReferenceById(5L)).thenReturn(library);
+        when(devices.register(eq(5L), any(), eq(NOW))).thenReturn(new SensorDeviceService.Outcome(0, 0));
         when(collection.record(eq(5L), any(), eq(DataSourceType.AGENT))).thenReturn(new MeasurementResponse(40L, 5L,
                 21.5, 2.0, 0.0, 433.3, -58, 6, DataSourceType.AGENT, false, NOW));
+        when(ai.securityAssess(any())).thenThrow(new AiServiceUnavailableException("IA caída", null));
+        when(ai.qualityScore(any())).thenThrow(new AiServiceUnavailableException("IA caída", null));
     }
 
     private static AgentReportRequest report(Double latency, Long bytes, Long packets,
                                              List<AgentReportRequest.ProtocolCount> protocols) {
-        return new AgentReportRequest("1.4.0", "Windows", "WiFiSense-Test", "WPA3", "CCMP", "5", 36, -58, 84, 433.3,
-                390.0, 1, 7, null, latency, 2.0, 0.0, 3.1, 6, null, null, List.of(), null, bytes, packets, protocols);
+        return new AgentReportRequest("1.5.0", "Windows", "WiFiSense-Test", "WPA3", "CCMP", "5", 36, -58, 84, 433.3,
+                390.0, 1, 7, null, latency, 2.0, 0.0, 3.1, 6, List.of(PHONE, LAPTOP), null, List.of(80), null, bytes,
+                packets, protocols);
     }
 
     private static AnalysisResultResponse analysis(NetworkStatus status) {
@@ -62,10 +83,22 @@ class SensorReportServiceTest {
                 1, null, NOW, null);
     }
 
+    private SensorReport savedReport() {
+        ArgumentCaptor<SensorReport> saved = ArgumentCaptor.forClass(SensorReport.class);
+        verify(reports).save(saved.capture());
+        return saved.getValue();
+    }
+
+    private List<Alert> savedAlerts() {
+        ArgumentCaptor<Alert> saved = ArgumentCaptor.forClass(Alert.class);
+        verify(alerts, atLeast(0)).save(saved.capture());
+        return saved.getAllValues();
+    }
+
     @Test
     void aKeyThatIsNotOfASensorIsLeftForMiWiFi() {
         assertThat(service.receive("wsa_" + "h".repeat(43), report(21.5, null, null, null))).isEmpty();
-        verifyNoInteractions(collection, analysis, throttle);
+        verifyNoInteractions(collection, analysis, throttle, devices, reports);
     }
 
     @Test
@@ -93,7 +126,67 @@ class SensorReportServiceTest {
         assertThat(ack.anomalyDetected()).isFalse();
         assertThat(ack.summary()).isEqualTo("Sensor de «WiFiSense-Test»: medición guardada. Estado: normal.");
         verify(throttle).acquireSensor(8L);
-        verify(sensors).markSeen(8L, NOW, "1.4.0", "Windows");
+        verify(sensors).markSeen(8L, NOW, "1.5.0", "Windows");
+    }
+
+    @Test
+    void theReportKeepsTheDevicesAndWhatTheAiSaysAboutSecurityQualityAndChannel() throws Exception {
+        reset(ai);
+        when(ai.securityAssess(any())).thenReturn(JSON.readTree(
+                "{\"score\": 74, \"grade\": \"ACCEPTABLE\", \"summary\": \"Bien\", \"findings\": []}"));
+        when(ai.qualityScore(any())).thenReturn(JSON.readTree("{\"score\": 88}"));
+        when(devices.register(eq(5L), any(), eq(NOW))).thenReturn(new SensorDeviceService.Outcome(1, 0));
+
+        AgentReportAck ack = service.receive(KEY, report(21.5, null, null, null)).orElseThrow();
+
+        SensorReport saved = savedReport();
+        assertThat(saved.getDeviceCount()).isEqualTo(6);
+        assertThat(saved.getNewDeviceCount()).isEqualTo(1);
+        assertThat(saved.getSecurityScore()).isEqualTo(74);
+        assertThat(saved.getSecurityGrade()).isEqualTo("ACCEPTABLE");
+        assertThat(saved.getQualityScore()).isEqualTo(88);
+        assertThat(saved.getSsid()).isEqualTo("WiFiSense-Test");
+        assertThat(JSON.readTree(saved.getDetails()).path("openPorts").toString()).isEqualTo("[80]");
+        assertThat(JSON.readTree(saved.getDetails()).path("security").path("summary").asText()).isEqualTo("Bien");
+        assertThat(ack.newDeviceCount()).isEqualTo(1);
+        assertThat(ack.securityGrade()).isEqualTo("ACCEPTABLE");
+        // a new device is announced to the team
+        assertThat(savedAlerts()).singleElement().satisfies(alert -> {
+            assertThat(alert.getMessage()).isEqualTo("Apareció 1 equipo nuevo en «WiFiSense-Test».");
+            assertThat(alert.getSeverity()).isEqualTo(Alert.Severity.WARNING);
+        });
+    }
+
+    @Test
+    void aCriticalSecurityGradeRaisesOneAlertWhileItStaysOpen() throws Exception {
+        reset(ai);
+        when(ai.securityAssess(any())).thenReturn(JSON.readTree(
+                "{\"score\": 20, \"grade\": \"CRITICAL\", \"summary\": \"El router tiene Telnet abierto.\"}"));
+        when(ai.qualityScore(any())).thenThrow(new AiServiceUnavailableException("IA caída", null));
+
+        service.receive(KEY, report(21.5, null, null, null));
+
+        assertThat(savedAlerts()).singleElement().satisfies(alert -> {
+            assertThat(alert.getSeverity()).isEqualTo(Alert.Severity.CRITICAL);
+            assertThat(alert.getMessage())
+                    .isEqualTo("Seguridad crítica en «WiFiSense-Test»: El router tiene Telnet abierto.");
+        });
+
+        Alert open = new Alert(library, null, Alert.Severity.CRITICAL, "Seguridad crítica en «WiFiSense-Test»: antes");
+        when(alerts.findByNetworkIdAndStatusNot(5L, Alert.Status.RESOLVED)).thenReturn(List.of(open));
+        clearInvocations(alerts);
+        service.receive(KEY, report(21.5, null, null, null));
+        verify(alerts, never()).save(any());
+    }
+
+    @Test
+    void aDeviceMarkedAsNotAuthorizedThatIsConnectedIsAnAlert() {
+        when(devices.register(eq(5L), any(), eq(NOW))).thenReturn(new SensorDeviceService.Outcome(0, 1));
+
+        service.receive(KEY, report(21.5, null, null, null));
+
+        assertThat(savedAlerts()).singleElement().extracting(Alert::getMessage)
+                .isEqualTo("Un equipo marcado como no autorizado está conectado a «WiFiSense-Test».");
     }
 
     @Test
@@ -111,17 +204,19 @@ class SensorReportServiceTest {
     }
 
     @Test
-    void withoutAConnectionMeasurementNothingIsStoredButTheSensorIsSeen() {
+    void withoutAConnectionMeasurementTheDevicesAndTheAuditAreStillKept() {
         AgentReportAck ack = service.receive(KEY, report(null, null, null, null)).orElseThrow();
 
         verifyNoInteractions(collection, analysis);
-        verify(sensors).markSeen(8L, NOW, "1.4.0", "Windows");
+        verify(devices).register(eq(5L), any(), eq(NOW));
+        verify(sensors).markSeen(8L, NOW, "1.5.0", "Windows");
+        assertThat(savedReport().getLatencyMs()).isNull();
         assertThat(ack.reportId()).isNull();
         assertThat(ack.summary()).contains("no pudo medir la conexión");
     }
 
     @Test
-    void aFailedAnalysisNeverLosesTheMeasurement() {
+    void aFailedAnalysisOrAnAiThatIsDownNeverLosesTheMeasurement() {
         when(analysis.analyze(any(), any(), any())).thenThrow(new IllegalStateException("sin datos"));
 
         AgentReportAck ack = service.receive(KEY, report(21.5, null, null, null)).orElseThrow();
@@ -129,5 +224,8 @@ class SensorReportServiceTest {
         assertThat(ack.reportId()).isEqualTo(40L);
         assertThat(ack.anomalyDetected()).isNull();
         assertThat(ack.summary()).isEqualTo("Sensor de «WiFiSense-Test»: medición guardada.");
+        SensorReport saved = savedReport();
+        assertThat(saved.getSecurityScore()).isNull();
+        assertThat(saved.getQualityScore()).isNull();
     }
 }

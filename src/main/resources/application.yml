@@ -78,6 +78,7 @@ wifisense:
     analysis-window: 20   # reports the anomaly detection receives as context
     history-size: 48
   data-sources:
+    demo-enabled: ${DEMO_DATA_SOURCES:false}  # true only for local demos: simulated networks and the server's own probe
     simulation:
       anomaly-probability: 0.1
     system-probe:

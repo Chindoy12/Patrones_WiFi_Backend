@@ -6,6 +6,7 @@ import com.wifisense.network.DataSourceUnavailableException;
 import com.wifisense.network.decorator.InvalidSnapshotException;
 import com.wifisense.security.BodyTooLargeException;
 import com.wifisense.security.InvalidEncryptedPasswordException;
+import com.wifisense.security.InvalidSessionException;
 import com.wifisense.security.LoginBlockedException;
 import com.wifisense.security.RecoveryBlockedException;
 import com.wifisense.security.RegistrationBlockedException;
@@ -46,6 +47,11 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(AuthenticationException.class)
     ProblemDetail unauthorized(AuthenticationException e) {
         return problem(HttpStatus.UNAUTHORIZED, "Datos incorrectos.");
+    }
+
+    @ExceptionHandler(InvalidSessionException.class)
+    ProblemDetail sessionEnded(InvalidSessionException e) {
+        return problem(HttpStatus.UNAUTHORIZED, e.getMessage());
     }
 
     @ExceptionHandler({LoginBlockedException.class, RegistrationBlockedException.class, RecoveryBlockedException.class})

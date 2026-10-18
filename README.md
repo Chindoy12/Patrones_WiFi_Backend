@@ -46,14 +46,16 @@ Los patrones, el problema que resuelve cada uno y los que se descartaron están 
 
 ## API
 
-Todas las rutas `/api/**` requieren `Authorization: Bearer <token>` salvo login y registro. «equipo» = ADMIN, ANALYST
-o VIEWER. Para un usuario final (`USER`) las rutas del equipo responden **404**, igual que una ruta inexistente.
+Todas las rutas `/api/**` requieren `Authorization: Bearer <token>` salvo las de inicio de sesión, registro, renovación
+y cierre de sesión. «equipo» = ADMIN, ANALYST o VIEWER. Para un usuario final (`USER`) las rutas del equipo responden **404**, igual que una ruta inexistente.
 
 | Método | Ruta | Rol |
 |---|---|---|
 | GET | `/api/auth/challenge` | público: reto de un solo uso para cifrar la contraseña |
-| POST | `/api/auth/login` `{"username","challengeId","encryptedPassword"}` | público |
-| POST | `/api/auth/register` `{"username","password"}` | público: crea un usuario final (`USER`) y devuelve su token |
+| POST | `/api/auth/login` `{"username","challengeId","encryptedPassword"}` | público: el usuario se reconoce sin importar mayúsculas; devuelve `token` y `refreshToken` |
+| POST | `/api/auth/register` `{"username","password"}` | público: crea un usuario final (`USER`) y devuelve su sesión |
+| POST | `/api/auth/refresh` `{"refreshToken"}` | público: cambia el refresh token (sirve una vez) por una sesión nueva; 401 si la sesión terminó |
+| POST | `/api/auth/logout` `{"refreshToken"}` | público: cierra esa sesión (204) |
 | GET | `/api/auth/me` | cualquier cuenta |
 | GET / POST / PUT / DELETE | `/api/my/networks[/{id}]` `{"name","provider","contractedMbps"}` | USER: solo sus propias redes (máximo 3) |
 | GET | `/api/my/speedtest/ping`, `/api/my/speedtest/download?bytes=` | USER: latencia y bajada de la prueba de conexión |
@@ -71,7 +73,7 @@ o VIEWER. Para un usuario final (`USER`) las rutas del equipo responden **404**,
 | GET / POST / PATCH / DELETE | `/api/users`, `/api/users/{id}/role`, `/api/users/{id}` | ADMIN (solo cuentas del equipo, máximo 3) |
 | GET / POST | `/api/locations`, `/api/locations/{id}/zones`, `/api/zones` | GET equipo · POST ADMIN |
 | GET / POST / PUT / DELETE | `/api/networks[/{id}]` | GET equipo · resto ADMIN |
-| GET / POST | `/api/devices`, `/api/devices/{id}/sessions` | GET equipo · POST ADMIN |
+| GET / POST | `/api/devices?networkId&limit`, `/api/devices/{id}/sessions?limit` | GET equipo (máximo 500, los más recientes primero) · POST ADMIN |
 | GET | `/api/networks/{id}/measurements?from&to&limit` | equipo |
 | POST | `/api/networks/{id}/measurements/collect` | ADMIN, ANALYST |
 | GET | `/api/networks/{id}/traffic`, `/api/networks/{id}/protocols` | equipo |
@@ -120,8 +122,18 @@ Errores: `application/problem+json` con `detail` y, en validación, `errors` por
   solicitudes cada 15 minutos por dirección y 3 enlaces por hora por correo (`RecoveryThrottle`). El token va en el
   fragmento `#t=` de la URL, que el navegador no envía a ningún servidor. Los correos salen por la API HTTP de
   Brevo (`BrevoEmailSender`).
-- **Sesiones que se cierran.** Al restablecer o cambiar la contraseña se guarda `password_changed_at` (V20) y
-  `SessionTokenValidator` rechaza los JWT emitidos antes; también los de cuentas borradas o desactivadas.
+- **Sesiones con refresh token** (`SessionService`, tabla `refresh_tokens` de V30). Cada inicio de sesión entrega un
+  token de acceso (JWT) y un refresh token de 256 bits; en la base solo queda su SHA-256. El refresh token **sirve una
+  vez**: `/api/auth/refresh` lo gasta en una sola sentencia atómica y entrega el siguiente de la misma familia. Si
+  alguien presenta otra vez uno ya usado, es una copia: se revoca toda esa familia y el ladrón y el dueño tienen que
+  iniciar sesión de nuevo (dentro de 10 s se considera el mismo navegador reintentando y solo se rechaza). Una sesión
+  sin usar durante 14 días vence (`SESSION_REFRESH_TTL`); los vencidos se borran cada noche. En las rutas públicas de
+  `/api/auth` se ignora la cabecera `Authorization`: un token de acceso vencido que el navegador aún envíe no impide
+  renovar la sesión.
+- **Sesiones que se cierran.** Al restablecer o cambiar la contraseña se guarda `password_changed_at` (V20), se
+  revocan todos los refresh tokens de la cuenta y `SessionTokenValidator` rechaza los JWT emitidos antes; también los
+  de cuentas borradas o desactivadas, y los que llevan un **rol distinto al actual** (un administrador que baja a
+  VIEWER deja de serlo en la siguiente petición, no cuando vence su token). Cerrar sesión revoca el refresh token.
 - **Instalar el agente con un código.** Mi Wi-Fi muestra un código de 8 caracteres (alfabeto sin 0/O ni 1/I/L,
   ≈10¹² combinaciones), válido 15 minutos y una sola vez, guardado como SHA-256 (V22). El instalador lo cambia por
   la clave del agente; cada dirección tiene 10 intentos cada 10 minutos.
@@ -134,6 +146,10 @@ Errores: `application/problem+json` con `detail` y, en validación, `errors` por
 - **Contraseñas:** se guardan solo como hash **BCrypt**; nunca se devuelven ni se registran en logs. Política
   (`PasswordPolicy`): 10 a 12 caracteres, al menos una mayúscula, un número y un carácter especial, sin espacios.
 - **Usuario:** 3 a 40 caracteres: un correo (`ana@campus.edu.co`) o un nombre (letras, números, `.`, `-`, `_`).
+  `Carlos` y `carlos` son la misma cuenta: el inicio de sesión no distingue mayúsculas (índice único
+  `lower(username)` de V28) y la sesión lleva el nombre tal como se guardó. Los correos se guardan en minúsculas.
+  Nadie puede registrarse con el nombre del administrador (`ADMIN_USERNAME`), y si ese nombre ya fuera de un usuario
+  final, el arranque no lo convierte en administrador.
 - **Login:** cualquier fallo responde lo mismo, `Datos incorrectos.`; entradas fuera de los límites se rechazan sin
   consultar la base de datos. Tras 5 fallos del mismo usuario y dirección (o 20 de una misma dirección) se bloquea
   10 minutos (`LoginAttemptService`).
@@ -151,6 +167,25 @@ no existe en ninguna página web.
 
 El esquema pertenece a **WiFiSense-database** (migraciones Flyway). Este servicio no crea ni altera tablas
 (`ddl-auto: none`); aplica primero las migraciones de ese repositorio.
+
+En producción el backend se conecta como **`wifisense_app`** (`security/rol_aplicacion.sql` de ese repositorio): puede
+leer y escribir datos, pero no crear, borrar ni cambiar tablas, y cada consulta tiene un máximo de 30 s. Las pruebas de
+integración corren con ese mismo usuario.
+
+## Rendimiento
+
+- **Reportes calculados en PostgreSQL** (`MeasurementStatsRepository`): promedio, mínimo, máximo y percentil 95 de
+  cada métrica en una sola consulta con el índice `(network_id, measured_at)`. Antes un reporte de 31 días cargaba en
+  memoria todas las mediciones (unas 45 000 por red revisada cada minuto; hasta 6 redes en una comparación).
+- **Limpieza nocturna** (`MonitoringRetentionJob`, 04:00 UTC): borra las mediciones, el tráfico, las estadísticas de
+  protocolos y los análisis de más de 90 días (`MONITORING_RETENTION`), las alertas resueltas hace más de 90 días
+  (las abiertas nunca) y los refresh tokens vencidos. Borra en lotes de 5 000 filas, cada uno en una transacción
+  corta, usando los índices por fecha de V27: el monitoreo y los usuarios no esperan detrás de un borrado largo.
+- **Ninguna lista sin tope:** equipos y sesiones de tráfico ahora tienen `limit` (máximo 500), igual que mediciones,
+  alertas y análisis.
+- **Respuestas comprimidas** (gzip) para JSON de más de 2 KB; la prueba de conexión nunca se comprime.
+- **Conexiones:** máximo 10 conexiones a la base (`DATABASE_POOL_SIZE`) y una petición espera como máximo 10 s por
+  una; al redesplegar, las peticiones en curso terminan antes de apagar (`server.shutdown: graceful`).
 
 ## Integración con la IA
 
@@ -182,6 +217,10 @@ pasar a HTTP/2 (h2c), uvicorn lo rechaza y descarta el cuerpo de la petición, y
 | `AI_SERVICE_URL` | `http://localhost:8000` | URL interna del servicio de IA |
 | `AI_API_KEY` | | Debe coincidir con la del servicio de IA |
 | `JWT_SECRET` | 32+ caracteres aleatorios | Firma de tokens; el arranque falla si falta |
+| `JWT_TTL` | `8h` (por defecto) | Vida del token de acceso; pasará a `15m` cuando la web renueve la sesión sola |
+| `SESSION_REFRESH_TTL` | `14d` (por defecto) | Una sesión sin usar este tiempo tiene que iniciar sesión de nuevo |
+| `MONITORING_RETENTION` | `90d` (por defecto, mínimo `31d`) | Antigüedad de los datos de monitoreo que se borran cada noche |
+| `DATABASE_POOL_SIZE` | `10` (por defecto) | Conexiones máximas a la base de datos |
 | `ADMIN_USERNAME` / `ADMIN_PASSWORD` | definidos por el equipo, nunca en el repositorio | Cuenta de administrador; la contraseña debe cumplir la política |
 | `PLAIN_PASSWORDS_ALLOWED` | `true` (por defecto) / `false` | `false`: solo se aceptan contraseñas cifradas por la web |
 | `CORS_ALLOWED_ORIGINS` | `http://localhost:5173` | Orígenes del frontend, separados por coma |
@@ -200,7 +239,10 @@ Copia `.env.example`, complétalo y expórtalo en tu terminal o IDE. Nunca subas
 # 2. Servicio de IA en ejecución (opcional para THRESHOLD/STATISTICAL)
 export $(grep -v '^#' .env | xargs)
 mvn spring-boot:run          # API en http://localhost:8080
-mvn test                     # pruebas unitarias y de controladores
+mvn test                     # pruebas unitarias y de controladores (las de integración se omiten)
+# Pruebas de integración: base con las migraciones (apply.sh --security) y el usuario de la aplicación
+WIFISENSE_IT_DATABASE_URL=jdbc:postgresql://localhost:5432/wifisense \
+WIFISENSE_IT_DATABASE_USERNAME=wifisense_app WIFISENSE_IT_DATABASE_PASSWORD=<su contraseña local> mvn test
 docker build -t wifisense-backend .
 ```
 
@@ -209,14 +251,27 @@ No hay usuarios de demostración. Al arrancar se crea (o actualiza) el administr
 
 ## Pruebas
 
-`src/test/java` (convención Maven): fuentes de datos y decoradores, transiciones de estado, las tres estrategias,
-la fachada con mocks, observadores, ciclo de vida de alertas y un `@WebMvcTest` que verifica seguridad por rol,
-validación y errores 404, el agente (claves, límite de reportes, equipos nuevos y con MAC privada, canal
-recomendado, IA caída) y el panel del equipo con datos reales (totales, orden, dueño enmascarado para ANALYST).
+`src/test/java` (convención Maven), 297 pruebas:
 
-## Pendiente (≈20 %)
+- **Unitarias y de controladores (290):** fuentes de datos y decoradores, transiciones de estado, las tres
+  estrategias, la fachada con mocks, observadores, ciclo de vida de alertas y `@WebMvcTest` que verifica seguridad por
+  rol, validación y errores 404, el agente (claves, límite de reportes, equipos nuevos y con MAC privada, canal
+  recomendado, IA caída), el panel del equipo con datos reales, las sesiones (rotación, copia detectada, cambio de
+  contraseña y de rol) y la limpieza nocturna por lotes.
+- **De integración con PostgreSQL real (7, paquete `integration`):** el backend completo contra una base creada con
+  las migraciones de WiFiSense-database, conectado como `wifisense_app`. Prueban por HTTP el registro, el inicio de
+  sesión sin importar mayúsculas, la renovación, la copia de un refresh token, el cierre de sesión, el cambio de
+  contraseña y de rol; y en SQL que un refresh token se gasta una sola vez, que las estadísticas del reporte calculadas
+  por PostgreSQL son iguales a las de Java y que la limpieza borra solo lo viejo (las alertas abiertas se quedan).
+  Se ejecutan cuando existe `WIFISENSE_IT_DATABASE_URL`.
 
-Fuentes Router API (con Adapter por fabricante), SNMP y captura de tráfico; refresh tokens; pruebas de integración
-con Testcontainers; pruebas de carga y seguridad avanzadas; paginación completa en listados.
+**GitHub Actions** (`.github/workflows/backend.yml`) corre en cada Pull Request y en `main`: crea PostgreSQL 16 con las
+migraciones del repositorio de base de datos y el rol `wifisense_app`, ejecuta todas las pruebas (falla si las de
+integración no corrieron) y construye la imagen Docker que despliega Railway.
+
+## Pendiente
+
+Fuentes Router API (con Adapter por fabricante), SNMP y captura de tráfico; pruebas de carga; que la web use el refresh
+token (fase del frontend) para bajar `JWT_TTL` a 15 minutos.
 
 Despliegue: ver [DEPLOYMENT.md](DEPLOYMENT.md).

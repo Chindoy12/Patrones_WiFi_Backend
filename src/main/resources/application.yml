@@ -1,8 +1,13 @@
 server:
   port: ${PORT:8080}
+  shutdown: graceful  # a redeploy lets the requests in progress finish
   error:
     include-message: never
     include-stacktrace: never
+  compression:  # JSON lists travel several times smaller; the speed test (application/octet-stream) is never compressed
+    enabled: true
+    mime-types: application/json,application/problem+json
+    min-response-size: 2KB
 
 spring:
   application:
@@ -11,6 +16,11 @@ spring:
     url: ${DATABASE_URL}
     username: ${DATABASE_USERNAME}
     password: ${DATABASE_PASSWORD}
+    hikari:
+      maximum-pool-size: ${DATABASE_POOL_SIZE:10}
+      connection-timeout: 10000  # ms: fail fast instead of keeping a request waiting 30 s for a connection
+  lifecycle:
+    timeout-per-shutdown-phase: 20s
   web:
     locale: es
     locale-resolver: fixed
@@ -28,9 +38,13 @@ management:
 wifisense:
   security:
     jwt-secret: ${JWT_SECRET}
-    token-ttl: ${JWT_TTL:8h}
+    token-ttl: ${JWT_TTL:8h}  # access token; 15m once the web app renews sessions with the refresh token
     allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173}
     plain-passwords-allowed: ${PLAIN_PASSWORDS_ALLOWED:true}  # false = only sealed passwords from the web app
+  session:
+    refresh-ttl: ${SESSION_REFRESH_TTL:14d}  # a session unused for this long has to sign in again
+  retention:
+    monitoring: ${MONITORING_RETENTION:90d}  # measurements, traffic and analyses of the team's networks
   accounts:
     admin-username: ${ADMIN_USERNAME:}
     admin-password: ${ADMIN_PASSWORD:}

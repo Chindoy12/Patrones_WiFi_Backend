@@ -1,10 +1,13 @@
 package com.wifisense.controller;
 
+import com.wifisense.dto.AgentOverview;
 import com.wifisense.dto.AgentPairingCodeResponse;
 import com.wifisense.dto.SensorStatus;
 import com.wifisense.security.SecurityConfig;
 import com.wifisense.security.SecurityProperties;
 import com.wifisense.service.NetworkSensorService;
+import com.wifisense.service.SensorDeviceService;
+import com.wifisense.service.SensorOverviewService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -18,6 +21,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
 
 import java.time.Instant;
+import java.util.List;
 
 import static org.mockito.Mockito.*;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
@@ -35,6 +39,10 @@ class SensorControllerTest {
 
     @MockitoBean
     private NetworkSensorService sensors;
+    @MockitoBean
+    private SensorOverviewService overview;
+    @MockitoBean
+    private SensorDeviceService devices;
     @MockitoBean
     private UserDetailsService userDetailsService;
 
@@ -86,5 +94,38 @@ class SensorControllerTest {
     @Test
     void anEndUserDoesNotKnowTheSensorsExist() throws Exception {
         mvc.perform(get("/api/networks/5/sensor").with(as("USER"))).andExpect(status().isNotFound());
+    }
+
+    private static final Instant SEEN = Instant.parse("2026-10-18T10:00:00Z");
+
+    @Test
+    void theWholeTeamSeesTheDevicesAndTheAuditOfTheSensor() throws Exception {
+        AgentOverview.Device laptop = new AgentOverview.Device("b".repeat(24), null, "Lenovo", "PC-Lab", false, true,
+                SEEN, SEEN, true, false);
+        when(overview.overview(5L)).thenReturn(new AgentOverview(new AgentOverview.KeyInfo("wsa_abcd", SEEN, SEEN),
+                true, null, List.of(), List.of(laptop), List.of()));
+
+        mvc.perform(get("/api/networks/5/sensor/overview").with(as("VIEWER")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.devices[0].vendor").value("Lenovo"))
+                .andExpect(jsonPath("$.devices[0].hostname").value("PC-Lab"));
+        mvc.perform(get("/api/networks/5/sensor/overview").with(as("USER"))).andExpect(status().isNotFound());
+    }
+
+    @Test
+    void onlyAnAdminNamesOrBlocksADevice() throws Exception {
+        String fingerprint = "b".repeat(24);
+        when(devices.update(5L, fingerprint, "Portátil del laboratorio", false)).thenReturn(new AgentOverview.Device(
+                fingerprint, "Portátil del laboratorio", "Lenovo", null, false, false, SEEN, SEEN, false, false));
+        String body = "{\"label\": \"Portátil del laboratorio\", \"authorized\": false}";
+
+        mvc.perform(put("/api/networks/5/sensor/devices/" + fingerprint).with(as("ANALYST"))
+                        .contentType("application/json").content(body))
+                .andExpect(status().isForbidden());
+        mvc.perform(put("/api/networks/5/sensor/devices/" + fingerprint).with(as("ADMIN"))
+                        .contentType("application/json").content(body))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.authorized").value(false))
+                .andExpect(jsonPath("$.label").value("Portátil del laboratorio"));
     }
 }

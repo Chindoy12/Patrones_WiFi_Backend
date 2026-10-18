@@ -95,6 +95,17 @@ class UserServiceTest {
     }
 
     @Test
+    void nobodyCanRegisterTheAdministratorsNameInAnyCase() {
+        UserService team = new UserService(users, encoder, new PasswordPolicy(),
+                new AccountProperties("Jefe.Local", "Admin#2026a", 3), new ContactPolicy());
+
+        // otherwise the startup could find an end user's account under ADMIN_USERNAME
+        assertThatThrownBy(() -> team.register("jefe.local", "Redes#2026a", "jefe@gmail.com", null))
+                .isInstanceOf(DuplicateResourceException.class);
+        verify(users, never()).save(any());
+    }
+
+    @Test
     void registrationKeepsARecoveryEmailAndAnInternationalPhone() {
         when(users.save(any(User.class))).thenAnswer(invocation -> invocation.getArgument(0));
 

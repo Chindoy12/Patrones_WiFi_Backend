@@ -41,6 +41,9 @@ class PasswordPolicyTest {
     void emailUsernamesAreAlsoTheAccountEmail() {
         assertThat(PasswordPolicy.emailFor("ana@uni.edu.co")).isEqualTo("ana@uni.edu.co");
         assertThat(PasswordPolicy.emailFor("ana")).isEqualTo("ana@wifisense.local");
+        // the database stores emails in lowercase (V28), so the placeholder is lowercase too
+        assertThat(PasswordPolicy.emailFor("Pedro")).isEqualTo("pedro@wifisense.local");
+        assertThat(PasswordPolicy.emailFor("Ana@Uni.edu.co")).isEqualTo("ana@uni.edu.co");
     }
 
     @Test

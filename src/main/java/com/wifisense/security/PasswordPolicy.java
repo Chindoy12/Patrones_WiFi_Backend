@@ -50,8 +50,9 @@ public class PasswordPolicy {
 
     /** The username itself when it is an email address; otherwise an internal placeholder address. */
     public static String emailFor(String username) {
-        return username.contains("@") ? username.toLowerCase(java.util.Locale.ROOT)
-                : username + com.wifisense.model.User.PLACEHOLDER_DOMAIN;
+        // always lowercase: the database keeps emails in lowercase (V28) and compares them that way
+        return (username.contains("@") ? username : username + com.wifisense.model.User.PLACEHOLDER_DOMAIN)
+                .toLowerCase(java.util.Locale.ROOT);
     }
 
     /** Cheap shape check before touching the database; anything outside the limits is simply a failed login. */

@@ -12,6 +12,7 @@ import com.wifisense.security.PasswordCipher;
 import com.wifisense.security.PasswordPolicy;
 import com.wifisense.security.RecoveryBlockedException;
 import com.wifisense.security.RecoveryThrottle;
+import com.wifisense.security.SessionService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -41,11 +42,12 @@ class PasswordResetServiceTest {
     private final PasswordCipher cipher = mock(PasswordCipher.class);
     private final RecoveryThrottle throttle = mock(RecoveryThrottle.class);
     private final MailDispatcher mail = mock(MailDispatcher.class);
+    private final SessionService sessions = mock(SessionService.class);
     private final PasswordResetService service = new PasswordResetService(users, tokens, new ContactPolicy(),
             new PasswordPolicy(), encoder, cipher, throttle, mail,
             new MailProperties("key", "wifisense@gmail.com", "WiFiSense", "https://wifisense.example.app/",
                     Duration.ofMinutes(30), false),
-            Clock.fixed(NOW, ZoneOffset.UTC));
+            sessions, Clock.fixed(NOW, ZoneOffset.UTC));
     private final User ana = new User("ana", "ana@gmail.com", "old-hash", User.Role.USER);
 
     @BeforeEach
@@ -118,6 +120,7 @@ class PasswordResetServiceTest {
         assertThat(ana.getPasswordHash()).isEqualTo("new-hash");
         assertThat(ana.getPasswordChangedAt()).isEqualTo(NOW);
         assertThat(stored.getUsedAt()).isEqualTo(NOW);
+        verify(sessions).endAll(ana.getId());
         assertThatThrownBy(() -> service.reset(token, "Otra#2026ab", null, null))
                 .isInstanceOf(InvalidResetLinkException.class);
     }

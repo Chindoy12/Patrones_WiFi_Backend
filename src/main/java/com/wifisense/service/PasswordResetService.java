@@ -11,6 +11,7 @@ import com.wifisense.security.ContactPolicy;
 import com.wifisense.security.PasswordCipher;
 import com.wifisense.security.PasswordPolicy;
 import com.wifisense.security.RecoveryThrottle;
+import com.wifisense.security.SessionService;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -34,7 +35,8 @@ import java.util.regex.Pattern;
  *   <li>The answer to a request is always the same, whether or not the email has an account, and the email goes out
  *       in the background, so the endpoint cannot be used to find out who is registered.</li>
  *   <li>The link carries 256 random bits; only their SHA-256 is stored. It works once and expires (30 min).</li>
- *   <li>Resetting the password closes every open session of the account (users.password_changed_at).</li>
+ *   <li>Resetting the password closes every open session of the account: the access tokens through
+ *       users.password_changed_at and the refresh tokens by revoking them.</li>
  * </ul>
  */
 @Service
@@ -51,13 +53,14 @@ public class PasswordResetService {
     private final RecoveryThrottle throttle;
     private final MailDispatcher mail;
     private final MailProperties properties;
+    private final SessionService sessions;
     private final Clock clock;
     private final SecureRandom random = new SecureRandom();
 
     public PasswordResetService(UserRepository users, PasswordResetTokenRepository tokens, ContactPolicy contacts,
                                 PasswordPolicy policy, PasswordEncoder encoder, PasswordCipher cipher,
                                 RecoveryThrottle throttle, MailDispatcher mail, MailProperties properties,
-                                Clock clock) {
+                                SessionService sessions, Clock clock) {
         this.users = users;
         this.tokens = tokens;
         this.contacts = contacts;
@@ -67,6 +70,7 @@ public class PasswordResetService {
         this.throttle = throttle;
         this.mail = mail;
         this.properties = properties;
+        this.sessions = sessions;
         this.clock = clock;
     }
 
@@ -111,6 +115,7 @@ public class PasswordResetService {
         }
         User user = link.getUser();
         user.changePassword(encoder.encode(password), now);
+        sessions.endAll(user.getId());
         link.use(now);
         tokens.deletePendingOf(user.getId());
     }

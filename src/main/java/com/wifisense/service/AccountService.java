@@ -4,7 +4,6 @@ import com.wifisense.dto.AccountResponse;
 import com.wifisense.dto.AuthResponse;
 import com.wifisense.dto.ContactUpdateRequest;
 import com.wifisense.dto.PasswordChangeRequest;
-import com.wifisense.dto.UserResponse;
 import com.wifisense.model.User;
 import com.wifisense.repository.UserRepository;
 import com.wifisense.security.ContactPolicy;
@@ -12,9 +11,7 @@ import com.wifisense.security.LoginAttemptService;
 import com.wifisense.security.LoginBlockedException;
 import com.wifisense.security.PasswordCipher;
 import com.wifisense.security.PasswordPolicy;
-import com.wifisense.security.TokenService;
-import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import com.wifisense.security.SessionService;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -37,18 +34,18 @@ public class AccountService {
     private final PasswordEncoder encoder;
     private final PasswordCipher cipher;
     private final LoginAttemptService attempts;
-    private final TokenService tokens;
+    private final SessionService sessions;
     private final Clock clock;
 
     public AccountService(UserRepository users, ContactPolicy contacts, PasswordPolicy policy, PasswordEncoder encoder,
-                          PasswordCipher cipher, LoginAttemptService attempts, TokenService tokens, Clock clock) {
+                          PasswordCipher cipher, LoginAttemptService attempts, SessionService sessions, Clock clock) {
         this.users = users;
         this.contacts = contacts;
         this.policy = policy;
         this.encoder = encoder;
         this.cipher = cipher;
         this.attempts = attempts;
-        this.tokens = tokens;
+        this.sessions = sessions;
         this.clock = clock;
     }
 
@@ -102,9 +99,8 @@ public class AccountService {
         }
         Instant now = Instant.now(clock);
         user.changePassword(encoder.encode(next), now);
-        TokenService.IssuedToken token = tokens.issue(new UsernamePasswordAuthenticationToken(user.getUsername(), null,
-                List.of(new SimpleGrantedAuthority("ROLE_" + user.getRole().name()))));
-        return new AuthResponse(token.value(), token.expiresAt(), UserResponse.from(user));
+        sessions.endAll(user.getId());
+        return sessions.start(user);
     }
 
     private void confirmPassword(User user, String password, String clientAddress) {

@@ -9,7 +9,7 @@ import com.wifisense.security.LoginBlockedException;
 import com.wifisense.security.PasswordCipher;
 import com.wifisense.security.PasswordPolicy;
 import com.wifisense.security.RegistrationThrottle;
-import com.wifisense.security.TokenService;
+import com.wifisense.security.SessionService;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -21,18 +21,18 @@ import org.springframework.stereotype.Service;
 public class AuthService {
 
     private final AuthenticationManager authenticationManager;
-    private final TokenService tokenService;
+    private final SessionService sessions;
     private final UserService userService;
     private final LoginAttemptService attempts;
     private final PasswordPolicy policy;
     private final RegistrationThrottle registrations;
     private final PasswordCipher cipher;
 
-    public AuthService(AuthenticationManager authenticationManager, TokenService tokenService,
+    public AuthService(AuthenticationManager authenticationManager, SessionService sessions,
                        UserService userService, LoginAttemptService attempts, PasswordPolicy policy,
                        RegistrationThrottle registrations, PasswordCipher cipher) {
         this.authenticationManager = authenticationManager;
-        this.tokenService = tokenService;
+        this.sessions = sessions;
         this.userService = userService;
         this.attempts = attempts;
         this.policy = policy;
@@ -49,7 +49,10 @@ public class AuthService {
         return authenticate(request.username().trim(), password, clientAddress);
     }
 
-    /** Every failure looks the same to the client, so the response never reveals which field was wrong. */
+    /**
+     * Every failure looks the same to the client, so the response never reveals which field was wrong. The username
+     * is found regardless of case ("Carlos" or "carlos").
+     */
     public AuthResponse login(LoginRequest request, String clientAddress) {
         String username = request.username() == null ? "" : request.username().trim();
         if (attempts.isBlocked(username, clientAddress)) {
@@ -79,7 +82,6 @@ public class AuthService {
             throw e;
         }
         attempts.recordSuccess(username, clientAddress);
-        TokenService.IssuedToken token = tokenService.issue(authentication);
-        return new AuthResponse(token.value(), token.expiresAt(), userService.findByUsername(authentication.getName()));
+        return sessions.start(authentication.getName());
     }
 }

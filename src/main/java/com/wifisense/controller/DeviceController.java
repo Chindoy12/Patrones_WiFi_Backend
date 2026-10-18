@@ -21,8 +21,9 @@ public class DeviceController {
     }
 
     @GetMapping
-    public List<DeviceResponse> list(@RequestParam(required = false) Long networkId) {
-        return deviceService.list(networkId);
+    public List<DeviceResponse> list(@RequestParam(required = false) Long networkId,
+                                     @RequestParam(defaultValue = "200") int limit) {
+        return deviceService.list(networkId, limit);
     }
 
     @PostMapping
@@ -32,7 +33,8 @@ public class DeviceController {
     }
 
     @GetMapping("/{id}/sessions")
-    public List<TrafficSessionResponse> sessions(@PathVariable Long id) {
-        return deviceService.sessions(id);
+    public List<TrafficSessionResponse> sessions(@PathVariable Long id,
+                                                 @RequestParam(defaultValue = "100") int limit) {
+        return deviceService.sessions(id, limit);
     }
 }

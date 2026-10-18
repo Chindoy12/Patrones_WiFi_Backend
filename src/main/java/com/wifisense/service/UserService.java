@@ -81,7 +81,7 @@ public class UserService {
         if (!errors.isEmpty()) {
             throw new InvalidAccountException(errors);
         }
-        if (RESERVED.contains(name.toLowerCase()) || users.existsByUsernameIgnoreCase(name)) {
+        if (isReserved(name) || users.existsByUsernameIgnoreCase(name)) {
             throw new DuplicateResourceException("Ese nombre de usuario no está disponible.");
         }
         if (users.findByEmailIgnoreCase(recoveryEmail).isPresent()) {
@@ -90,6 +90,13 @@ public class UserService {
         User user = new User(name, recoveryEmail, passwordEncoder.encode(password), User.Role.USER);
         user.changeContact(recoveryEmail, normalizedPhone);
         return UserResponse.from(users.save(user));
+    }
+
+    /** Generic staff names and the administrator's own name (ADMIN_USERNAME), in any case, are not for end users. */
+    private boolean isReserved(String name) {
+        String admin = accounts.adminUsername();
+        return RESERVED.contains(name.toLowerCase(java.util.Locale.ROOT))
+                || (admin != null && name.equalsIgnoreCase(admin.trim()));
     }
 
     private void validate(String username, String password) {

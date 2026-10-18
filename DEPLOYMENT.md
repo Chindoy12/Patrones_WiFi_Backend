@@ -47,7 +47,8 @@ Usuario ─► Frontend (Vercel) ─► Backend (contenedor) ─► PostgreSQL a
 12. **Test sensor de una red del equipo.** En Redes → «Registrar red» (la sede y la zona se crean ahí mismo), luego
     «Sensor» → «Conectar sensor». Instala el agente en un computador con Windows conectado a esa red y escribe el
     código: el panel pasa a «Conectado» y en Mediciones aparece la primera medición con fuente «Sensor WiFiSense».
-    Desde el segundo reporte llegan el tráfico y los protocolos (TCP, UDP, ICMP) de ese computador.
+    Desde el segundo reporte llegan el tráfico y los protocolos (TCP, UDP, ICMP) de ese computador. En el mismo panel
+    del sensor (y en Dispositivos) aparecen los equipos conectados, la auditoría de seguridad y el mejor canal.
 
 13. **Test recuperación.** En la página de inicio de sesión pulsa «¿Olvidaste tu contraseña?», escribe un correo
     registrado y revisa la bandeja (y spam). El enlace abre «Crea una contraseña nueva».

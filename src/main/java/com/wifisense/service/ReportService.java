@@ -1,8 +1,6 @@
 package com.wifisense.service;
 
-import com.wifisense.dto.MetricSummary;
 import com.wifisense.dto.NetworkReport;
-import com.wifisense.model.Measurement;
 import com.wifisense.model.Network;
 import com.wifisense.repository.*;
 import org.springframework.stereotype.Service;
@@ -14,9 +12,11 @@ import java.time.Instant;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
-import java.util.function.Function;
 
-/** Basic aggregated reports and side-by-side comparison of networks. */
+/**
+ * Basic aggregated reports and side-by-side comparison of networks. The statistics are computed by PostgreSQL
+ * (MeasurementStatsRepository): the measurements of the period are never loaded into memory.
+ */
 @Service
 @Transactional(readOnly = true)
 public class ReportService {
@@ -24,13 +24,13 @@ public class ReportService {
     private static final Duration MAX_RANGE = Duration.ofDays(31);
 
     private final NetworkRepository networks;
-    private final MeasurementRepository measurements;
+    private final MeasurementStatsRepository measurements;
     private final AlertRepository alerts;
     private final AnalysisResultRepository analyses;
     private final AiPredictionRepository predictions;
     private final Clock clock;
 
-    public ReportService(NetworkRepository networks, MeasurementRepository measurements, AlertRepository alerts,
+    public ReportService(NetworkRepository networks, MeasurementStatsRepository measurements, AlertRepository alerts,
                          AnalysisResultRepository analyses, AiPredictionRepository predictions, Clock clock) {
         this.networks = networks;
         this.measurements = measurements;
@@ -48,18 +48,14 @@ public class ReportService {
         }
         Network network = networks.findById(networkId)
                 .orElseThrow(() -> new ResourceNotFoundException("la red", networkId));
-        List<Measurement> data = measurements.findByNetworkIdAndMeasuredAtBetweenOrderByMeasuredAtAsc(networkId, start, end);
+        MeasurementStatsRepository.Stats stats = measurements.summarize(networkId, start, end);
 
-        return new NetworkReport(networkId, network.getSsid(), start, end, data.size(),
-                summarize(data, Measurement::getLatencyMs),
-                summarize(data, Measurement::getJitterMs),
-                summarize(data, Measurement::getPacketLossPct),
-                summarize(data, Measurement::getBandwidthMbps),
-                summarize(data, Measurement::getSignalStrengthDbm),
+        return new NetworkReport(networkId, network.getSsid(), start, end, (int) stats.samples(),
+                stats.latency(), stats.jitter(), stats.packetLoss(), stats.bandwidth(), stats.signal(),
                 alerts.countByNetworkIdAndCreatedAtBetween(networkId, start, end),
                 analyses.countByNetworkIdAndCreatedAtBetween(networkId, start, end),
                 predictions.countByNetworkIdAndAnomalyDetectedTrueAndCreatedAtBetween(networkId, start, end),
-                data.stream().anyMatch(Measurement::isSimulated));
+                stats.simulated());
     }
 
     /** Duplicated ids are ignored; order of first appearance is kept. */
@@ -69,9 +65,5 @@ public class ReportService {
             throw new IllegalArgumentException("Selecciona entre 2 y 6 redes distintas para comparar");
         }
         return unique.stream().map(id -> report(id, from, to)).toList();
-    }
-
-    private static MetricSummary summarize(List<Measurement> data, Function<Measurement, ? extends Number> metric) {
-        return MetricSummary.of(data.stream().map(metric).toList());
     }
 }

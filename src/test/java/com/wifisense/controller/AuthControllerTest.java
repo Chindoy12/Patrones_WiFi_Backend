@@ -9,6 +9,8 @@ import com.wifisense.security.RecoveryBlockedException;
 import com.wifisense.security.RegistrationBlockedException;
 import com.wifisense.security.SecurityConfig;
 import com.wifisense.security.SecurityProperties;
+import com.wifisense.security.InvalidSessionException;
+import com.wifisense.security.SessionService;
 import com.wifisense.service.AuthService;
 import com.wifisense.service.InvalidAccountException;
 import com.wifisense.service.InvalidResetLinkException;
@@ -58,6 +60,8 @@ class AuthControllerTest {
     private UserDetailsService userDetailsService;
     @MockitoBean
     private PasswordCipher passwordCipher;
+    @MockitoBean
+    private SessionService sessions;
 
     @Test
     void anyoneCanGetAOneTimePasswordChallenge() throws Exception {
@@ -169,5 +173,42 @@ class AuthControllerTest {
                         .content("{\"token\":\"t\",\"challengeId\":\"c\",\"encryptedPassword\":\"e\"}"))
                 .andExpect(status().isNoContent());
         verify(resets).reset("t", null, "c", "e");
+    }
+
+    @Test
+    void aRefreshTokenRenewsTheSessionWithoutTheOldAccessToken() throws Exception {
+        when(sessions.refresh("r1")).thenReturn(new AuthResponse("jwt2", Instant.parse("2026-10-17T10:00:00Z"),
+                new UserResponse(1L, "ana", User.Role.USER), "r2",
+                Instant.parse("2026-10-31T10:00:00Z")));
+
+        // the browser may still send its expired access token: on these public endpoints it is ignored
+        mvc.perform(post("/api/auth/refresh").contentType(MediaType.APPLICATION_JSON)
+                        .header("Authorization", "Bearer expired.access.token")
+                        .content("{\"refreshToken\":\"r1\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.token").value("jwt2"))
+                .andExpect(jsonPath("$.refreshToken").value("r2"))
+                .andExpect(jsonPath("$.user.username").value("ana"));
+    }
+
+    @Test
+    void anEndedSessionAnswers401InSpanish() throws Exception {
+        when(sessions.refresh(any())).thenThrow(new InvalidSessionException());
+
+        mvc.perform(post("/api/auth/refresh").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"refreshToken\":\"used\"}"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.detail").value("Tu sesión terminó. Inicia sesión de nuevo."));
+    }
+
+    @Test
+    void signingOutWorksEvenWithAnExpiredAccessToken() throws Exception {
+        mvc.perform(post("/api/auth/logout").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"refreshToken\":\"r1\"}"))
+                .andExpect(status().isNoContent());
+        verify(sessions).end("r1");
+
+        mvc.perform(post("/api/auth/logout")).andExpect(status().isNoContent());
+        verify(sessions).end(null);
     }
 }

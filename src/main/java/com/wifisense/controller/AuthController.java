@@ -3,10 +3,12 @@ package com.wifisense.controller;
 import com.wifisense.dto.AuthResponse;
 import com.wifisense.dto.ForgotPasswordRequest;
 import com.wifisense.dto.LoginRequest;
+import com.wifisense.dto.RefreshRequest;
 import com.wifisense.dto.RegisterRequest;
 import com.wifisense.dto.ResetPasswordRequest;
 import com.wifisense.dto.UserResponse;
 import com.wifisense.security.PasswordCipher;
+import com.wifisense.security.SessionService;
 import com.wifisense.service.AuthService;
 import com.wifisense.service.PasswordResetService;
 import com.wifisense.service.UserService;
@@ -26,13 +28,15 @@ public class AuthController {
     private final UserService userService;
     private final PasswordCipher cipher;
     private final PasswordResetService resets;
+    private final SessionService sessions;
 
     public AuthController(AuthService authService, UserService userService, PasswordCipher cipher,
-                          PasswordResetService resets) {
+                          PasswordResetService resets, SessionService sessions) {
         this.authService = authService;
         this.userService = userService;
         this.cipher = cipher;
         this.resets = resets;
+        this.sessions = sessions;
     }
 
     /** One-time public key the browser uses to seal the password before sending it. */
@@ -50,6 +54,19 @@ public class AuthController {
     @ResponseStatus(HttpStatus.CREATED)
     public AuthResponse register(@RequestBody RegisterRequest request, HttpServletRequest http) {
         return authService.register(request, clientAddress(http));
+    }
+
+    /** Renews the session: the refresh token is used up and a new pair comes back. 401 when the session ended. */
+    @PostMapping("/refresh")
+    public AuthResponse refresh(@RequestBody RefreshRequest request) {
+        return sessions.refresh(request.refreshToken());
+    }
+
+    /** Signs out: the refresh token (and the rest of its session) stops working. */
+    @PostMapping("/logout")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void logout(@RequestBody(required = false) RefreshRequest request) {
+        sessions.end(request == null ? null : request.refreshToken());
     }
 
     /** Always the same answer, so it cannot tell whether an email has an account. */

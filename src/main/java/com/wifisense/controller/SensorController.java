@@ -4,6 +4,7 @@ import com.wifisense.dto.AgentOverview;
 import com.wifisense.dto.AgentPairingCodeResponse;
 import com.wifisense.dto.DeviceSessionHistory;
 import com.wifisense.dto.DeviceUpdateRequest;
+import com.wifisense.dto.IdentifyModeResponse;
 import com.wifisense.dto.SensorStatus;
 import com.wifisense.service.NetworkSensorService;
 import com.wifisense.service.SensorDeviceService;
@@ -59,6 +60,12 @@ public class SensorController {
     }
 
     /** The code is shown once: it must not stay in any cache. */
+    /** "Which device is this?": the sensor reports every minute for the next ten minutes. */
+    @PostMapping("/identify")
+    public IdentifyModeResponse identify(@PathVariable Long networkId) {
+        return sensors.identify(networkId);
+    }
+
     @PostMapping("/pairing")
     public ResponseEntity<AgentPairingCodeResponse> pairing(@PathVariable Long networkId) {
         return ResponseEntity.status(HttpStatus.CREATED).cacheControl(CacheControl.noStore())

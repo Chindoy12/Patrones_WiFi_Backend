@@ -5,6 +5,7 @@ import com.wifisense.dto.AgentOverview;
 import com.wifisense.dto.AgentPairingCodeResponse;
 import com.wifisense.dto.DeviceSessionHistory;
 import com.wifisense.dto.DeviceUpdateRequest;
+import com.wifisense.dto.IdentifyModeResponse;
 import com.wifisense.service.AgentDeviceService;
 import com.wifisense.service.AgentKeyService;
 import com.wifisense.service.AgentOverviewService;
@@ -53,6 +54,12 @@ public class MyAgentController {
                                              Authentication authentication) {
         return deviceService.update(authentication.getName(), networkId, fingerprint, request.label(),
                 request.authorized());
+    }
+
+    /** "Which device is this?": the agent reports every minute for the next ten minutes. */
+    @PostMapping("/identify")
+    public IdentifyModeResponse identify(@PathVariable Long networkId, Authentication authentication) {
+        return keys.identify(authentication.getName(), networkId);
     }
 
     /** The key travels only in this response; it must not be cached anywhere. */

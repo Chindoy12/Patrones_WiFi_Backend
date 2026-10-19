@@ -115,4 +115,17 @@ class MyAgentControllerTest {
                 .andExpect(jsonPath("$.authorized").value(false))
                 .andExpect(jsonPath("$.vendor").value("Apple"));
     }
+
+    @Test
+    void theOwnerAsksTheAgentToReportEveryMinute() throws Exception {
+        when(keys.identify("ana", 7L)).thenReturn(new com.wifisense.dto.IdentifyModeResponse(
+                Instant.parse("2026-10-19T15:10:00Z"), 60));
+        when(keys.identify("luis", 7L)).thenThrow(new com.wifisense.service.ResourceNotFoundException("la red", 7L));
+
+        mvc.perform(post("/api/my/networks/7/agent/identify").with(as("ana", "USER")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.reportSeconds").value(60));
+        mvc.perform(post("/api/my/networks/7/agent/identify").with(as("luis", "USER")))
+                .andExpect(status().isNotFound());
+    }
 }

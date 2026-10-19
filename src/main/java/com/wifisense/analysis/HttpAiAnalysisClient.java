@@ -10,6 +10,7 @@ import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 
 import java.net.http.HttpClient;
+import java.time.Duration;
 import java.util.Optional;
 
 @Component
@@ -23,9 +24,19 @@ public class HttpAiAnalysisClient implements AiAnalysisClient {
     private static final String CHANNEL_PATH = "/api/v1/channel/recommend";
     private static final String HEALTH_PATH = "/health";
 
+    private static final String TRAIN_PATH = "/api/v1/model/train";
+    private static final Duration TRAINING_TIMEOUT = Duration.ofMinutes(2);
+
     private final RestClient restClient;
+    private final RestClient trainingClient;
 
     public HttpAiAnalysisClient(RestClient.Builder builder, AiServiceProperties properties) {
+        this.restClient = client(builder.clone(), properties, properties.timeout());
+        // Training takes a few seconds per thousand measurements: its own client waits longer.
+        this.trainingClient = client(builder.clone(), properties, TRAINING_TIMEOUT);
+    }
+
+    private static RestClient client(RestClient.Builder builder, AiServiceProperties properties, Duration readTimeout) {
         // HTTP/1.1 on purpose: over plain http (Railway's private network) the JDK client would otherwise try an h2c
         // upgrade, which uvicorn rejects and then drops the request body (422 "Field required").
         HttpClient httpClient = HttpClient.newBuilder()
@@ -33,9 +44,8 @@ public class HttpAiAnalysisClient implements AiAnalysisClient {
                 .connectTimeout(properties.timeout())
                 .build();
         JdkClientHttpRequestFactory requestFactory = new JdkClientHttpRequestFactory(httpClient);
-        requestFactory.setReadTimeout(properties.timeout());
-
-        this.restClient = builder
+        requestFactory.setReadTimeout(readTimeout);
+        return builder
                 .baseUrl(properties.url())
                 .requestFactory(requestFactory)
                 .defaultHeaders(headers -> {
@@ -119,6 +129,20 @@ public class HttpAiAnalysisClient implements AiAnalysisClient {
                     .body(JsonNode.class);
         } catch (RestClientException e) {
             throw new AiServiceUnavailableException("Falló la recomendación de canal: " + e.getMessage(), e);
+        }
+    }
+
+    @Override
+    public JsonNode trainModel(JsonNode request) {
+        try {
+            return trainingClient.post()
+                    .uri(TRAIN_PATH)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(request)
+                    .retrieve()
+                    .body(JsonNode.class);
+        } catch (RestClientException e) {
+            throw new AiServiceUnavailableException("Falló el entrenamiento en el servicio de IA: " + e.getMessage(), e);
         }
     }
 

@@ -24,6 +24,12 @@ public interface AiAnalysisClient {
     /** Channel with the least interference from the neighbouring networks, and whether moving to it is worth it. */
     JsonNode channelRecommend(AiChannelRequest request);
 
+    /**
+     * Trains the anomaly model with real measurements (see the AI's /api/v1/model/train): the AI evaluates it against
+     * the model in use and keeps it only if it is better, or rebuilds a version already promoted ({@code restore}).
+     */
+    JsonNode trainModel(JsonNode request);
+
     /** True when the AI service answers its health check; never throws. */
     boolean isHealthy();
 }

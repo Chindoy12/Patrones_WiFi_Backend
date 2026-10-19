@@ -21,7 +21,7 @@ Usuario ─► Frontend (Vercel) ─► Backend (contenedor) ─► PostgreSQL a
    Para recuperar contraseñas por correo: `BREVO_API_KEY` (Brevo → SMTP & API → API keys), `MAIL_FROM` (un
    remitente verificado en Brevo) y `FRONTEND_URL` (la URL de Vercel, a donde apunta el enlace). Sin ellas la
    recuperación responde igual pero no envía nada (y el log lo advierte). Opcionales, con buenos valores por
-   defecto: `JWT_TTL` (15m; la web renueva la sesión sola), `SESSION_REFRESH_TTL` (14d), `MONITORING_RETENTION` (90d) y `DATABASE_POOL_SIZE` (10).
+   defecto: `JWT_TTL` (15m; la web renueva la sesión sola), `SESSION_REFRESH_TTL` (14d), `MONITORING_RETENTION` (90d), `DATABASE_POOL_SIZE` (10) y `AI_TRAINING_AUTOMATIC` (true: entrena la IA con los datos reales cada lunes).
    **No** definas `DEMO_DATA_SOURCES` en producción: sin ella las redes simuladas no se pueden registrar ni se miden.
 3. **Deploy Backend.** Crea un servicio Docker desde `WiFiSense-backend` (usa su `Dockerfile`: compila con Maven y corre en Java 21 LTS). Puerto `8080`
    o la variable `PORT` de la plataforma. Health check: `/actuator/health`.

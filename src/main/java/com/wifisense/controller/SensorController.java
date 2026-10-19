@@ -2,6 +2,7 @@ package com.wifisense.controller;
 
 import com.wifisense.dto.AgentOverview;
 import com.wifisense.dto.AgentPairingCodeResponse;
+import com.wifisense.dto.DeviceSessionHistory;
 import com.wifisense.dto.DeviceUpdateRequest;
 import com.wifisense.dto.SensorStatus;
 import com.wifisense.service.NetworkSensorService;
@@ -41,6 +42,13 @@ public class SensorController {
     @GetMapping("/overview")
     public AgentOverview overview(@PathVariable Long networkId) {
         return overview.overview(networkId);
+    }
+
+    /** When a device was connected in the last days (default 7, at most 30). */
+    @GetMapping("/devices/{fingerprint}/sessions")
+    public DeviceSessionHistory sessions(@PathVariable Long networkId, @PathVariable String fingerprint,
+                                         @RequestParam(defaultValue = "7") int days) {
+        return devices.history(networkId, fingerprint, days);
     }
 
     /** Name a device (blank removes the name) or mark it as authorized or not. */

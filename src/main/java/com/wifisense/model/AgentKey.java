@@ -31,6 +31,10 @@ public class AgentKey {
     @Column(name = "last_seen_at")
     private Instant lastSeenAt;
 
+    /** While in the future, the agent reports every minute ("Which device is this?" on the page). */
+    @Column(name = "identify_until")
+    private Instant identifyUntil;
+
     protected AgentKey() {
     }
 
@@ -50,4 +54,5 @@ public class AgentKey {
     public String getKeyPrefix() { return keyPrefix; }
     public Instant getCreatedAt() { return createdAt; }
     public Instant getLastSeenAt() { return lastSeenAt; }
+    public Instant getIdentifyUntil() { return identifyUntil; }
 }

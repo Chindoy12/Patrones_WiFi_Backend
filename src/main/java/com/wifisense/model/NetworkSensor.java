@@ -34,6 +34,10 @@ public class NetworkSensor {
     @Column(name = "last_seen_at")
     private Instant lastSeenAt;
 
+    /** While in the future, the agent reports every minute ("Which device is this?" on the page). */
+    @Column(name = "identify_until")
+    private Instant identifyUntil;
+
     @Column(name = "agent_version", length = 20)
     private String agentVersion;
 
@@ -59,6 +63,7 @@ public class NetworkSensor {
     public String getKeyPrefix() { return keyPrefix; }
     public Instant getCreatedAt() { return createdAt; }
     public Instant getLastSeenAt() { return lastSeenAt; }
+    public Instant getIdentifyUntil() { return identifyUntil; }
     public String getAgentVersion() { return agentVersion; }
     public String getPlatform() { return platform; }
     public String getLastSsid() { return lastSsid; }

@@ -74,7 +74,8 @@ public class AgentOverviewService {
                 .map(a -> new AgentOverview.Alert(a.getType().name(), a.getDetail(), a.getCreatedAt()))
                 .toList();
         return new AgentOverview(
-                key == null ? null : new AgentOverview.KeyInfo(key.getKeyPrefix(), key.getCreatedAt(), key.getLastSeenAt()),
+                key == null ? null : new AgentOverview.KeyInfo(key.getKeyPrefix(), key.getCreatedAt(), key.getLastSeenAt(),
+                        IdentifyMode.visible(key.getIdentifyUntil(), now)),
                 online, latest == null ? null : toView(latest), history, devices(networkId, latest, now), alertHistory);
     }
 
@@ -93,7 +94,8 @@ public class AgentOverviewService {
                 .map(d -> new AgentOverview.Device(d.getFingerprint(), d.getLabel(), d.getVendor(), d.getHostname(),
                         d.isPrivateMac(), d.isAuthorized(), d.getFirstSeenAt(), d.getLastSeenAt(),
                         latestAt != null && !d.getLastSeenAt().isBefore(latestAt),
-                        d.getFirstSeenAt().isAfter(learnedAt) && d.getFirstSeenAt().isAfter(now.minus(RECENT_DEVICE))))
+                        d.getFirstSeenAt().isAfter(learnedAt) && d.getFirstSeenAt().isAfter(now.minus(RECENT_DEVICE)),
+                        d.getKind(), d.getRole(), d.getModel()))
                 .toList();
     }
 

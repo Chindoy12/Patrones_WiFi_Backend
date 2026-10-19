@@ -67,7 +67,8 @@ public class SensorOverviewService {
                 .toList();
         return new AgentOverview(
                 sensor == null ? null
-                        : new AgentOverview.KeyInfo(sensor.getKeyPrefix(), sensor.getCreatedAt(), sensor.getLastSeenAt()),
+                        : new AgentOverview.KeyInfo(sensor.getKeyPrefix(), sensor.getCreatedAt(), sensor.getLastSeenAt(),
+                                IdentifyMode.visible(sensor.getIdentifyUntil(), now)),
                 online, latest == null ? null : toView(latest), history, devices(networkId, latest, now), List.of());
     }
 
@@ -87,7 +88,8 @@ public class SensorOverviewService {
                         d.isPrivateMac(), d.isAuthorized(), d.getFirstSeenAt(), d.getLastSeenAt(),
                         latestAt != null && !d.getLastSeenAt().isBefore(latestAt),
                         d.getFirstSeenAt().isAfter(learnedAt)
-                                && d.getFirstSeenAt().isAfter(now.minus(AgentOverviewService.RECENT_DEVICE))))
+                                && d.getFirstSeenAt().isAfter(now.minus(AgentOverviewService.RECENT_DEVICE)),
+                        d.getKind(), d.getRole(), d.getModel()))
                 .toList();
     }
 

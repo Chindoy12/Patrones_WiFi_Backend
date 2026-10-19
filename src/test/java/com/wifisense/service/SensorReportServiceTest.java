@@ -126,7 +126,7 @@ class SensorReportServiceTest {
         assertThat(ack.anomalyDetected()).isFalse();
         assertThat(ack.summary()).isEqualTo("Sensor de «WiFiSense-Test»: medición guardada. Estado: normal.");
         verify(throttle).acquireSensor(8L);
-        verify(sensors).markSeen(8L, NOW, "1.5.0", "Windows");
+        verify(sensors).markSeen(8L, NOW, "1.5.0", "Windows", "WiFiSense-Test");
     }
 
     @Test
@@ -209,7 +209,7 @@ class SensorReportServiceTest {
 
         verifyNoInteractions(collection, analysis);
         verify(devices).register(eq(5L), any(), eq(NOW));
-        verify(sensors).markSeen(8L, NOW, "1.5.0", "Windows");
+        verify(sensors).markSeen(8L, NOW, "1.5.0", "Windows", "WiFiSense-Test");
         assertThat(savedReport().getLatencyMs()).isNull();
         assertThat(ack.reportId()).isNull();
         assertThat(ack.summary()).contains("no pudo medir la conexión");
@@ -227,5 +227,18 @@ class SensorReportServiceTest {
         SensorReport saved = savedReport();
         assertThat(saved.getSecurityScore()).isNull();
         assertThat(saved.getQualityScore()).isNull();
+    }
+
+    @Test
+    void aComputerOnAnotherWifiDoesNotStoreItsMeasurementsAsThisNetworks() {
+        AgentReportRequest elsewhere = new AgentReportRequest("1.6.0", "Windows", "Casa-5G", "WPA2", null, "5", 36,
+                -50, null, null, null, null, null, null, 15.0, 1.0, 0.0, null, 3, List.of(PHONE), null, null, null);
+
+        AgentReportAck ack = service.receive(KEY, elsewhere).orElseThrow();
+
+        verify(sensors).markSeen(8L, NOW, "1.6.0", "Windows", "Casa-5G");
+        verifyNoInteractions(collection, analysis, devices, reports, alerts);
+        assertThat(ack.reportId()).isNull();
+        assertThat(ack.summary()).startsWith("Este computador está conectado a «Casa-5G», no a «WiFiSense-Test»");
     }
 }

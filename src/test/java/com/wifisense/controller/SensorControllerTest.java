@@ -54,7 +54,8 @@ class SensorControllerTest {
     @Test
     void theWholeTeamSeesWhetherTheSensorIsReporting() throws Exception {
         when(sensors.status(5L)).thenReturn(new SensorStatus(true, true, "wsa_abcd",
-                Instant.parse("2026-10-16T10:00:00Z"), Instant.parse("2026-10-18T10:00:00Z"), "1.4.0", "Windows", null));
+                Instant.parse("2026-10-16T10:00:00Z"), Instant.parse("2026-10-18T10:00:00Z"), "1.4.0", "Windows", null,
+                "Lab-Redes"));
 
         mvc.perform(get("/api/networks/5/sensor").with(as("VIEWER")))
                 .andExpect(status().isOk())
@@ -127,5 +128,18 @@ class SensorControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.authorized").value(false))
                 .andExpect(jsonPath("$.label").value("Portátil del laboratorio"));
+    }
+
+    @Test
+    void theWholeTeamSeesWhenADeviceWasConnected() throws Exception {
+        String fingerprint = "b".repeat(24);
+        when(devices.history(5L, fingerprint, 7)).thenReturn(new com.wifisense.dto.DeviceSessionHistory(fingerprint, 7,
+                1, 55, List.of(new com.wifisense.dto.DeviceSessionHistory.Period(SEEN, SEEN.plusSeconds(3300), false,
+                55))));
+
+        mvc.perform(get("/api/networks/5/sensor/devices/" + fingerprint + "/sessions").with(as("VIEWER")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalMinutes").value(55))
+                .andExpect(jsonPath("$.periods[0].ongoing").value(false));
     }
 }

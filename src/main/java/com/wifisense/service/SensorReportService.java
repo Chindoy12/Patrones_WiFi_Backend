@@ -86,7 +86,15 @@ public class SensorReportService {
         Long networkId = sensor.getNetwork().getId();
         String ssid = sensor.getNetwork().getSsid();
         Instant now = Instant.now(clock);
-        sensors.markSeen(sensor.getId(), now, request.agentVersion(), request.platform());
+        String connectedTo = request.ssid() == null || request.ssid().isBlank() ? null : request.ssid().strip();
+        sensors.markSeen(sensor.getId(), now, request.agentVersion(), request.platform(), connectedTo);
+        if (connectedTo != null && !connectedTo.equals(ssid.strip())) {
+            // The computer is on another Wi-Fi: its measurements are not this network's. Nothing is stored, and the
+            // panel shows the Wi-Fi it is on (without location permission Windows gives no name: then it is trusted).
+            return Optional.of(new AgentReportAck(null, request.deviceCount(), 0, null, null, null,
+                    "Este computador está conectado a «" + connectedTo + "», no a «" + ssid
+                            + "»: el reporte no se guardó. Conéctalo a «" + ssid + "» o usa el código de esa red."));
+        }
 
         SensorDeviceService.Outcome seen = devices.register(networkId, request, now);
         int deviceCount = Math.min(Math.max(request.deviceCount(), request.deviceHashesOrEmpty().size()), 1024);

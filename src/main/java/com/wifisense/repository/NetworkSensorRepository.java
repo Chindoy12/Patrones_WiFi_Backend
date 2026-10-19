@@ -24,8 +24,9 @@ public interface NetworkSensorRepository extends JpaRepository<NetworkSensor, Lo
 
     @Modifying
     @Query("""
-            update NetworkSensor s set s.lastSeenAt = :at, s.agentVersion = :version, s.platform = :platform
+            update NetworkSensor s set s.lastSeenAt = :at, s.agentVersion = :version, s.platform = :platform,
+                s.lastSsid = :ssid
             where s.id = :id""")
     int markSeen(@Param("id") Long id, @Param("at") Instant at, @Param("version") String version,
-                 @Param("platform") String platform);
+                 @Param("platform") String platform, @Param("ssid") String ssid);
 }

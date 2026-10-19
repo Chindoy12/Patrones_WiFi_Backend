@@ -40,6 +40,10 @@ public class NetworkSensor {
     @Column(length = 20)
     private String platform;
 
+    /** The Wi-Fi the sensor's computer was on in its last report; null if it could not be read. */
+    @Column(name = "last_ssid", length = 64)
+    private String lastSsid;
+
     protected NetworkSensor() {
     }
 
@@ -57,4 +61,5 @@ public class NetworkSensor {
     public Instant getLastSeenAt() { return lastSeenAt; }
     public String getAgentVersion() { return agentVersion; }
     public String getPlatform() { return platform; }
+    public String getLastSsid() { return lastSsid; }
 }

@@ -101,6 +101,12 @@ class SensorFlowIntegrationTest extends PostgresIntegrationTest {
         assertThat(call(post("/api/networks/" + id + "/measurements/collect"), admin, null, 503).get("detail")
                 .asText()).startsWith("Esta red la mide su sensor");
 
+        // when each device was connected: both are connected since this report
+        JsonNode periods = call(get("/api/networks/" + id + "/sensor/devices/" + laptop + "/sessions"), admin, null,
+                200);
+        assertThat(periods.get("connections").asInt()).isEqualTo(1);
+        assertThat(periods.get("periods").get(0).get("ongoing").asBoolean()).isTrue();
+
         // a second report right away is refused until the agent's interval
         report(key, Map.of(), 429);
 

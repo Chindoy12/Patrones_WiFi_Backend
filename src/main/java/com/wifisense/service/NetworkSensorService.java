@@ -98,8 +98,8 @@ public class NetworkSensorService {
     }
 
     @Transactional
-    public void markSeen(Long sensorId, Instant at, String agentVersion, String platform) {
-        sensors.markSeen(sensorId, at, agentVersion, platform);
+    public void markSeen(Long sensorId, Instant at, String agentVersion, String platform, String ssid) {
+        sensors.markSeen(sensorId, at, agentVersion, platform, ssid);
     }
 
     @Transactional(readOnly = true)
@@ -113,8 +113,8 @@ public class NetworkSensorService {
         return sensors.findByNetworkId(networkId)
                 .map(s -> new SensorStatus(true, s.getLastSeenAt() != null
                         && s.getLastSeenAt().isAfter(now.minus(properties.onlineWindow())), s.getKeyPrefix(),
-                        s.getCreatedAt(), s.getLastSeenAt(), s.getAgentVersion(), s.getPlatform(), pending))
-                .orElse(new SensorStatus(false, false, null, null, null, null, null, pending));
+                        s.getCreatedAt(), s.getLastSeenAt(), s.getAgentVersion(), s.getPlatform(), pending, s.getLastSsid()))
+                .orElse(new SensorStatus(false, false, null, null, null, null, null, pending, null));
     }
 
     /** The sensor stops being accepted (for example, the computer was lost); a pending code is cancelled too. */

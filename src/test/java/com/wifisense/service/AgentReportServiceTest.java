@@ -221,6 +221,46 @@ class AgentReportServiceTest {
     }
 
     @Test
+    void storesWhatKindOfDeviceItIsAndWhichOnesAreTheComputerAndTheRouter() {
+        AgentDevice known = new AgentDevice(7L, LAPTOP, NOW.minusSeconds(3600));
+        when(devices.existsByNetworkId(7L)).thenReturn(true);
+        when(devices.findByNetworkIdOrderByFirstSeenAtAsc(7L)).thenReturn(List.of(known));
+        AgentReportRequest request = new AgentReportRequest("1.7.0", "Windows", "Casa", "WPA2", "CCMP", "5", 44, -58,
+                84, null, null, null, null, null, 20.0, 2.0, 0.0, null, 3, null,
+                List.of(new AgentReportRequest.DeviceInfo(PHONE, null, "iPhone de Ana", true, "iPhone15,2", "PHONE", null),
+                        new AgentReportRequest.DeviceInfo(LAPTOP, "Lenovo", "PC-SALA", false, " ", "COMPUTER", "SELF"),
+                        new AgentReportRequest.DeviceInfo(STRANGER, "TP-Link", null, false, null, null, "ROUTER")),
+                List.of(), null);
+
+        service.receive(KEY, request);
+
+        ArgumentCaptor<AgentDevice> stored = ArgumentCaptor.forClass(AgentDevice.class);
+        verify(devices, times(2)).save(stored.capture());
+        AgentDevice phone = stored.getAllValues().stream().filter(d -> d.getFingerprint().equals(PHONE)).findFirst()
+                .orElseThrow();
+        assertThat(phone.getKind()).isEqualTo("PHONE");
+        assertThat(phone.getModel()).isEqualTo("iPhone15,2");
+        assertThat(phone.getRole()).isNull();
+        assertThat(known.getRole()).isEqualTo("SELF");
+        assertThat(known.getKind()).isEqualTo("COMPUTER");
+        assertThat(known.getModel()).isNull();  // a blank model is ignored
+        assertThat(stored.getAllValues()).filteredOn(d -> "ROUTER".equals(d.getRole()))
+                .extracting(AgentDevice::getFingerprint).containsExactly(STRANGER);
+    }
+
+    @Test
+    void whileTheUserIdentifiesADeviceTheAgentIsAskedToReportEveryMinute() {
+        AgentReportAck usual = service.receive(KEY, request(List.of(PHONE), 0.0));
+        assertThat(usual.nextReportSeconds()).isNull();
+
+        org.springframework.test.util.ReflectionTestUtils.setField(key, "identifyUntil", NOW.plusSeconds(300));
+        assertThat(service.receive(KEY, request(List.of(PHONE), 0.0)).nextReportSeconds()).isEqualTo(60);
+
+        org.springframework.test.util.ReflectionTestUtils.setField(key, "identifyUntil", NOW.minusSeconds(1));
+        assertThat(service.receive(KEY, request(List.of(PHONE), 0.0)).nextReportSeconds()).isNull();
+    }
+
+    @Test
     void aLongCipherIsTrimmedInsteadOfRejectedAndRaisesNoError() {
         ArgumentCaptor<AiSecurityRequest> security = ArgumentCaptor.forClass(AiSecurityRequest.class);
         AgentReportRequest request = new AgentReportRequest("1.2.0", "Windows", "Casa", "WPA2",

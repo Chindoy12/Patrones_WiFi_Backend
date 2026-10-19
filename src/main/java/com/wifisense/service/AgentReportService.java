@@ -85,7 +85,8 @@ public class AgentReportService {
         Set<String> privates = request.privateFingerprints();
         int deviceCount = Math.min(Math.max(request.deviceCount(), hashes.size()), 1024);
         Prepared prepared = Objects.requireNonNull(transaction.execute(status -> {
-            DeviceOutcome outcome = registerDevices(networkId, hashes, vendors, names, privates, now);
+            DeviceOutcome outcome = registerDevices(networkId, hashes, vendors, names, privates,
+                    request.identitiesByFingerprint(), now);
             return new Prepared(outcome.newDevices(), outcome.unauthorizedPresent(),
                     reports.findByNetworkIdOrderByReceivedAtDesc(networkId,
                             PageRequest.of(0, Math.max(properties.analysisWindow() - 1, 1))));
@@ -128,7 +129,8 @@ public class AgentReportService {
         raiseAlerts(networkId, newDevices, prepared.unauthorizedPresent(), security, saved.getAnomalyDetected(),
                 anomaly);
         return new AgentReportAck(saved.getId(), deviceCount, newDevices, saved.getSecurityScore(),
-                saved.getSecurityGrade(), saved.getAnomalyDetected(), summary(deviceCount, newDevices, security));
+                saved.getSecurityGrade(), saved.getAnomalyDetected(), summary(deviceCount, newDevices, security),
+                IdentifyMode.nextReportSeconds(key.getIdentifyUntil(), now));
     }
 
     /** Turns this report's findings into alerts (recorded and, when due, emailed). Never breaks the report. */
@@ -159,6 +161,12 @@ public class AgentReportService {
         }
     }
 
+    private static void describe(AgentDevice device, AgentReportRequest.Identity identity) {
+        if (identity != null) {
+            device.describe(identity.kind(), identity.role(), identity.model());
+        }
+    }
+
     private record Prepared(int newDevices, int unauthorizedPresent, List<AgentReport> previous) {
     }
 
@@ -170,7 +178,8 @@ public class AgentReportService {
      * of a network only learns its devices: they are all "new", but announcing them would be noise.
      */
     private DeviceOutcome registerDevices(Long networkId, List<String> hashes, Map<String, String> vendors,
-                                          Map<String, String> names, Set<String> privates, Instant now) {
+                                          Map<String, String> names, Set<String> privates,
+                                          Map<String, AgentReportRequest.Identity> identities, Instant now) {
         boolean learning = !devices.existsByNetworkId(networkId);
         Map<String, AgentDevice> known = new HashMap<>();
         devices.findByNetworkIdOrderByFirstSeenAtAsc(networkId).forEach(d -> known.put(d.getFingerprint(), d));
@@ -181,12 +190,14 @@ public class AgentReportService {
             if (device == null) {
                 device = new AgentDevice(networkId, hash, now);
                 device.identify(vendors.get(hash), names.get(hash));
+                describe(device, identities.get(hash));
                 device.markPrivateMac(privates.contains(hash));
                 devices.save(device);
                 fresh++;
             } else {
                 device.seen(now);
                 device.identify(vendors.get(hash), names.get(hash));  // fills maker/name for older devices
+                describe(device, identities.get(hash));
                 device.markPrivateMac(privates.contains(hash));
                 if (!device.isAuthorized()) {
                     unauthorized++;

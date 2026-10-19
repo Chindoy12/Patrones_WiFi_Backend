@@ -21,7 +21,7 @@ Usuario ─► Frontend (Vercel) ─► Backend (contenedor) ─► PostgreSQL a
    Para recuperar contraseñas por correo: `BREVO_API_KEY` (Brevo → SMTP & API → API keys), `MAIL_FROM` (un
    remitente verificado en Brevo) y `FRONTEND_URL` (la URL de Vercel, a donde apunta el enlace). Sin ellas la
    recuperación responde igual pero no envía nada (y el log lo advierte). Opcionales, con buenos valores por
-   defecto: `JWT_TTL` (8h), `SESSION_REFRESH_TTL` (14d), `MONITORING_RETENTION` (90d) y `DATABASE_POOL_SIZE` (10).
+   defecto: `JWT_TTL` (15m; la web renueva la sesión sola), `SESSION_REFRESH_TTL` (14d), `MONITORING_RETENTION` (90d) y `DATABASE_POOL_SIZE` (10).
    **No** definas `DEMO_DATA_SOURCES` en producción: sin ella las redes simuladas no se pueden registrar ni se miden.
 3. **Deploy Backend.** Crea un servicio Docker desde `WiFiSense-backend` (usa su `Dockerfile`: compila con Maven y corre en Java 21 LTS). Puerto `8080`
    o la variable `PORT` de la plataforma. Health check: `/actuator/health`.
@@ -53,7 +53,11 @@ Usuario ─► Frontend (Vercel) ─► Backend (contenedor) ─► PostgreSQL a
 13. **Test recuperación.** En la página de inicio de sesión pulsa «¿Olvidaste tu contraseña?», escribe un correo
     registrado y revisa la bandeja (y spam). El enlace abre «Crea una contraseña nueva».
 
-14. **Test sesiones.** Inicia sesión escribiendo el usuario con otras mayúsculas (`ANA` en vez de `ana`): debe
+14. **Test reporte semanal e historial.** En Reportes elige una red con sensor: el «Reporte semanal» muestra la semana
+    actual (lunes a domingo, hora de Colombia) y se descarga en CSV o se imprime como PDF. En el panel del sensor (o en
+    Dispositivos) el reloj de cada equipo muestra cuándo estuvo conectado.
+
+15. **Test sesiones.** Inicia sesión escribiendo el usuario con otras mayúsculas (`ANA` en vez de `ana`): debe
     entrar. `POST /api/auth/refresh` con el `refreshToken` del inicio de sesión responde un par nuevo; el mismo
     refresh token una segunda vez responde 401 «Tu sesión terminó».
 

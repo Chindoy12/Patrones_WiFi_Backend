@@ -22,6 +22,10 @@ public interface AgentKeyRepository extends JpaRepository<AgentKey, Long> {
     @Query("update AgentKey k set k.lastSeenAt = :at where k.id = :id")
     int markSeen(@Param("id") Long id, @Param("at") Instant at);
 
+    @Modifying
+    @Query("update AgentKey k set k.identifyUntil = :until where k.network.id = :networkId")
+    int identifyUntil(@Param("networkId") Long networkId, @Param("until") Instant until);
+
     @Modifying(flushAutomatically = true, clearAutomatically = true)
     @Query("delete from AgentKey k where k.network.id = :networkId")
     int deleteByNetworkId(@Param("networkId") Long networkId);

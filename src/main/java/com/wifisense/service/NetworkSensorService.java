@@ -2,6 +2,7 @@ package com.wifisense.service;
 
 import com.wifisense.dto.AgentPairResponse;
 import com.wifisense.dto.AgentPairingCodeResponse;
+import com.wifisense.dto.IdentifyModeResponse;
 import com.wifisense.dto.SensorStatus;
 import com.wifisense.model.Network;
 import com.wifisense.model.NetworkSensor;
@@ -102,6 +103,19 @@ public class NetworkSensorService {
         sensors.markSeen(sensorId, at, agentVersion, platform, ssid);
     }
 
+    /** "Which device is this?": the sensor reports every minute for the next ten minutes. */
+    @Transactional
+    public IdentifyModeResponse identify(Long networkId) {
+        if (!networks.existsById(networkId)) {
+            throw new ResourceNotFoundException("la red", networkId);
+        }
+        Instant until = Instant.now(clock).plus(IdentifyMode.LENGTH);
+        if (sensors.identifyUntil(networkId, until) == 0) {
+            throw new IllegalStateException("Esta red aún no tiene el sensor instalado.");
+        }
+        return new IdentifyModeResponse(until, IdentifyMode.REPORT_SECONDS);
+    }
+
     @Transactional(readOnly = true)
     public SensorStatus status(Long networkId) {
         if (!networks.existsById(networkId)) {
@@ -113,7 +127,8 @@ public class NetworkSensorService {
         return sensors.findByNetworkId(networkId)
                 .map(s -> new SensorStatus(true, s.getLastSeenAt() != null
                         && s.getLastSeenAt().isAfter(now.minus(properties.onlineWindow())), s.getKeyPrefix(),
-                        s.getCreatedAt(), s.getLastSeenAt(), s.getAgentVersion(), s.getPlatform(), pending, s.getLastSsid()))
+                        s.getCreatedAt(), s.getLastSeenAt(), s.getAgentVersion(), s.getPlatform(), pending, s.getLastSsid(),
+                        IdentifyMode.visible(s.getIdentifyUntil(), now)))
                 .orElse(new SensorStatus(false, false, null, null, null, null, null, pending, null));
     }
 

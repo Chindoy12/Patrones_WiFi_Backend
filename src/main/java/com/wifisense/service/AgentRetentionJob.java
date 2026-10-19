@@ -30,17 +30,19 @@ public class AgentRetentionJob {
     private final SensorReportRepository sensorReports;
     private final SensorDeviceRepository sensorDevices;
     private final AgentProperties properties;
+    private final DeviceSessionTracker sessions;
     private final Clock clock;
 
     public AgentRetentionJob(AgentReportRepository reports, AgentDeviceRepository devices, AgentAlertRepository alerts,
                              SensorReportRepository sensorReports, SensorDeviceRepository sensorDevices,
-                             AgentProperties properties, Clock clock) {
+                             AgentProperties properties, Clock clock, DeviceSessionTracker sessions) {
         this.reports = reports;
         this.devices = devices;
         this.alerts = alerts;
         this.sensorReports = sensorReports;
         this.sensorDevices = sensorDevices;
         this.properties = properties;
+        this.sessions = sessions;
         this.clock = clock;
     }
 
@@ -51,9 +53,10 @@ public class AgentRetentionJob {
         int deletedReports = reports.deleteOlderThan(before) + sensorReports.deleteOlderThan(before);
         int deletedDevices = devices.deleteNotSeenSince(before) + sensorDevices.deleteNotSeenSince(before);
         int deletedAlerts = alerts.deleteOlderThan(before);
-        if (deletedReports + deletedDevices + deletedAlerts > 0) {
-            log.info("Agent retention: deleted {} reports, {} devices and {} alerts older than {}", deletedReports,
-                    deletedDevices, deletedAlerts, before);
+        int deletedPeriods = sessions.deleteOlderThan(before);
+        if (deletedReports + deletedDevices + deletedAlerts + deletedPeriods > 0) {
+            log.info("Agent retention: deleted {} reports, {} devices, {} alerts and {} connection periods older than {}",
+                    deletedReports, deletedDevices, deletedAlerts, deletedPeriods, before);
         }
     }
 }

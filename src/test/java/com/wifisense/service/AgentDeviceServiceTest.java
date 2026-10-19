@@ -23,7 +23,8 @@ class AgentDeviceServiceTest {
 
     private final HomeNetworkRepository networks = mock(HomeNetworkRepository.class);
     private final AgentDeviceRepository devices = mock(AgentDeviceRepository.class);
-    private final AgentDeviceService service = new AgentDeviceService(networks, devices);
+    private final DeviceSessionTracker sessions = mock(DeviceSessionTracker.class);
+    private final AgentDeviceService service = new AgentDeviceService(networks, devices, sessions);
     private final HomeNetwork casa = new HomeNetwork(mock(User.class), "Casa", null, null);
     private final AgentDevice device = new AgentDevice(7L, FP, Instant.parse("2026-10-16T12:00:00Z"));
 

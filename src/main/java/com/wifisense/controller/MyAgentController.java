@@ -3,6 +3,7 @@ package com.wifisense.controller;
 import com.wifisense.dto.AgentKeyCreated;
 import com.wifisense.dto.AgentOverview;
 import com.wifisense.dto.AgentPairingCodeResponse;
+import com.wifisense.dto.DeviceSessionHistory;
 import com.wifisense.dto.DeviceUpdateRequest;
 import com.wifisense.service.AgentDeviceService;
 import com.wifisense.service.AgentKeyService;
@@ -36,6 +37,13 @@ public class MyAgentController {
     @GetMapping
     public AgentOverview overview(@PathVariable Long networkId, Authentication authentication) {
         return overview.overview(authentication.getName(), networkId);
+    }
+
+    /** When a device was connected in the last days (default 7, at most 30). */
+    @GetMapping("/devices/{fingerprint}/sessions")
+    public DeviceSessionHistory sessions(@PathVariable Long networkId, @PathVariable String fingerprint,
+                                         @RequestParam(defaultValue = "7") int days, Authentication authentication) {
+        return deviceService.history(authentication.getName(), networkId, fingerprint, days);
     }
 
     /** Rename a device or mark it authorized/not authorized. */

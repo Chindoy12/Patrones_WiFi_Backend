@@ -1,6 +1,7 @@
 package com.wifisense.service;
 
 import com.wifisense.dto.AgentOverview;
+import com.wifisense.dto.DeviceSessionHistory;
 import com.wifisense.dto.AgentReportRequest;
 import com.wifisense.model.SensorDevice;
 import com.wifisense.repository.NetworkRepository;
@@ -24,10 +25,13 @@ public class SensorDeviceService {
 
     private final NetworkRepository networks;
     private final SensorDeviceRepository devices;
+    private final DeviceSessionTracker sessions;
 
-    public SensorDeviceService(NetworkRepository networks, SensorDeviceRepository devices) {
+    public SensorDeviceService(NetworkRepository networks, SensorDeviceRepository devices,
+                               DeviceSessionTracker sessions) {
         this.networks = networks;
         this.devices = devices;
+        this.sessions = sessions;
     }
 
     /** How many devices of a report had never been seen, and how many marked as not authorized are connected. */
@@ -66,7 +70,20 @@ public class SensorDeviceService {
                 }
             }
         }
+        devices.flush();  // the periods below reference the devices just saved
+        sessions.track(DeviceSessionTracker.Owner.TEAM, networkId, hashes, now);
         return new Outcome(learning ? 0 : fresh, unauthorized);
+    }
+
+    /** When a device of the network was connected in the last days (1 to 30). */
+    @Transactional(readOnly = true)
+    public DeviceSessionHistory history(Long networkId, String fingerprint, int days) {
+        if (!networks.existsById(networkId)) {
+            throw new ResourceNotFoundException("la red", networkId);
+        }
+        devices.findByNetworkIdAndFingerprint(networkId, fingerprint)
+                .orElseThrow(() -> new ResourceNotFoundException("el equipo", fingerprint));
+        return sessions.history(DeviceSessionTracker.Owner.TEAM, networkId, fingerprint, days);
     }
 
     /** ADMIN: rename a device (blank removes the name) or mark it as authorized or not. */

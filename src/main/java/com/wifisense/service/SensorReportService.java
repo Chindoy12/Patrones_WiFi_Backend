@@ -134,7 +134,8 @@ public class SensorReportService {
                 : "Sensor de «" + ssid + "»: reporte recibido, pero el computador no pudo medir la conexión.";
         return Optional.of(new AgentReportAck(measurement == null ? null : measurement.id(), deviceCount, newDevices,
                 report.getSecurityScore(), report.getSecurityGrade(),
-                status == null ? null : status != NetworkStatus.NORMAL, summary));
+                status == null ? null : status != NetworkStatus.NORMAL, summary,
+                IdentifyMode.nextReportSeconds(sensor.getIdentifyUntil(), now)));
     }
 
     /**

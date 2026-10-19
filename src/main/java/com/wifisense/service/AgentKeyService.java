@@ -1,6 +1,7 @@
 package com.wifisense.service;
 
 import com.wifisense.dto.AgentKeyCreated;
+import com.wifisense.dto.IdentifyModeResponse;
 import com.wifisense.model.AgentKey;
 import com.wifisense.model.HomeNetwork;
 import com.wifisense.repository.AgentKeyRepository;
@@ -30,12 +31,15 @@ public class AgentKeyService {
     private final AgentKeyRepository keys;
     private final HomeNetworkRepository networks;
     private final AgentReportThrottle throttle;
+    private final java.time.Clock clock;
     private final SecureRandom random = new SecureRandom();
 
-    public AgentKeyService(AgentKeyRepository keys, HomeNetworkRepository networks, AgentReportThrottle throttle) {
+    public AgentKeyService(AgentKeyRepository keys, HomeNetworkRepository networks, AgentReportThrottle throttle,
+                           java.time.Clock clock) {
         this.keys = keys;
         this.networks = networks;
         this.throttle = throttle;
+        this.clock = clock;
     }
 
     /** Creates the key of a network, replacing (and so revoking) the previous one. */
@@ -63,6 +67,20 @@ public class AgentKeyService {
         ownNetwork(username, networkId);
         keys.findByNetworkId(networkId).ifPresent(old -> throttle.forget(old.getId()));
         keys.deleteByNetworkId(networkId);
+    }
+
+    /**
+     * "Which device is this?": the agent of the network reports every minute for the next ten minutes. Fails when the
+     * network has no agent installed.
+     */
+    @Transactional
+    public IdentifyModeResponse identify(String username, Long networkId) {
+        ownNetwork(username, networkId);
+        java.time.Instant until = java.time.Instant.now(clock).plus(IdentifyMode.LENGTH);
+        if (keys.identifyUntil(networkId, until) == 0) {
+            throw new IllegalStateException("Esta red aún no tiene el agente instalado.");
+        }
+        return new IdentifyModeResponse(until, IdentifyMode.REPORT_SECONDS);
     }
 
     /** The key of the agent that sent a report; malformed, unknown and revoked keys fail the same way. */

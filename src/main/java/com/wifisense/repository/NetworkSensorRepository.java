@@ -18,6 +18,10 @@ public interface NetworkSensorRepository extends JpaRepository<NetworkSensor, Lo
 
     Optional<NetworkSensor> findByNetworkId(Long networkId);
 
+    @Modifying
+    @Query("update NetworkSensor s set s.identifyUntil = :until where s.network.id = :networkId")
+    int identifyUntil(@Param("networkId") Long networkId, @Param("until") Instant until);
+
     @Modifying(flushAutomatically = true, clearAutomatically = true)
     @Query("delete from NetworkSensor s where s.network.id = :networkId")
     int deleteByNetworkId(@Param("networkId") Long networkId);

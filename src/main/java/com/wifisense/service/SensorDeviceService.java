@@ -48,6 +48,7 @@ public class SensorDeviceService {
         Map<String, String> vendors = request.vendorsByFingerprint();
         Map<String, String> names = request.namesByFingerprint();
         Set<String> privates = request.privateFingerprints();
+        Map<String, AgentReportRequest.Identity> identities = request.identitiesByFingerprint();
         boolean learning = !devices.existsByNetworkId(networkId);
         Map<String, SensorDevice> known = new HashMap<>();
         devices.findByNetworkIdOrderByFirstSeenAtAsc(networkId).forEach(d -> known.put(d.getFingerprint(), d));
@@ -58,12 +59,14 @@ public class SensorDeviceService {
             if (device == null) {
                 device = new SensorDevice(networkId, hash, now);
                 device.identify(vendors.get(hash), names.get(hash));
+                describe(device, identities.get(hash));
                 device.markPrivateMac(privates.contains(hash));
                 devices.save(device);
                 fresh++;
             } else {
                 device.seen(now);
                 device.identify(vendors.get(hash), names.get(hash));
+                describe(device, identities.get(hash));
                 device.markPrivateMac(privates.contains(hash));
                 if (!device.isAuthorized()) {
                     unauthorized++;
@@ -73,6 +76,12 @@ public class SensorDeviceService {
         devices.flush();  // the periods below reference the devices just saved
         sessions.track(DeviceSessionTracker.Owner.TEAM, networkId, hashes, now);
         return new Outcome(learning ? 0 : fresh, unauthorized);
+    }
+
+    private static void describe(SensorDevice device, AgentReportRequest.Identity identity) {
+        if (identity != null) {
+            device.describe(identity.kind(), identity.role(), identity.model());
+        }
     }
 
     /** When a device of the network was connected in the last days (1 to 30). */
@@ -103,6 +112,6 @@ public class SensorDeviceService {
         }
         return new AgentOverview.Device(device.getFingerprint(), device.getLabel(), device.getVendor(),
                 device.getHostname(), device.isPrivateMac(), device.isAuthorized(), device.getFirstSeenAt(),
-                device.getLastSeenAt(), false, false);
+                device.getLastSeenAt(), false, false, device.getKind(), device.getRole(), device.getModel());
     }
 }

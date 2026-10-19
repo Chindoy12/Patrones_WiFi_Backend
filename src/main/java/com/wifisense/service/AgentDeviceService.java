@@ -49,6 +49,6 @@ public class AgentDeviceService {
         }
         return new AgentOverview.Device(device.getFingerprint(), device.getLabel(), device.getVendor(),
                 device.getHostname(), device.isPrivateMac(), device.isAuthorized(), device.getFirstSeenAt(),
-                device.getLastSeenAt(), false, false);
+                device.getLastSeenAt(), false, false, device.getKind(), device.getRole(), device.getModel());
     }
 }

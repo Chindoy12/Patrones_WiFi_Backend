@@ -88,6 +88,28 @@ class AgentControllerTest {
     }
 
     @Test
+    void theAgentIsToldWhenToReportAgainAndWhatEachDeviceIs() throws Exception {
+        when(service.receive(eq(KEY), any())).thenReturn(new AgentReportAck(9L, 2, 0, 90, "SECURE", false,
+                "2 equipos conectados.", 60));
+
+        mvc.perform(post("/api/agent/reports").header("X-Agent-Key", KEY).contentType(MediaType.APPLICATION_JSON)
+                        .content(REPORT.replace("\"openPorts\":[80,443]}", "\"devices\":[{\"id\":\"aaaaaaaaaaaaaaaaaaaaaaaa\","
+                                + "\"name\":\"iPhone de Ana\",\"model\":\"iPhone15,2\",\"kind\":\"PHONE\"},"
+                                + "{\"id\":\"bbbbbbbbbbbbbbbbbbbbbbbb\",\"kind\":\"COMPUTER\",\"role\":\"SELF\"}]}")))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.nextReportSeconds").value(60));
+    }
+
+    @Test
+    void anUnknownKindOrRoleOfDeviceIsRejected() throws Exception {
+        mvc.perform(post("/api/agent/reports").header("X-Agent-Key", KEY).contentType(MediaType.APPLICATION_JSON)
+                        .content(REPORT.replace("\"openPorts\":[80,443]}", "\"devices\":[{\"id\":\"aaaaaaaaaaaaaaaaaaaaaaaa\","
+                                + "\"kind\":\"TOASTER\",\"role\":\"ADMIN\"}]}")))
+                .andExpect(status().isBadRequest());
+        verifyNoInteractions(service, sensors);
+    }
+
+    @Test
     void anInvalidKeyIsUnauthorized() throws Exception {
         when(service.receive(any(), any())).thenThrow(new InvalidAgentKeyException());
 

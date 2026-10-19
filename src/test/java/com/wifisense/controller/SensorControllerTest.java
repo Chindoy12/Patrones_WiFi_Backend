@@ -142,4 +142,16 @@ class SensorControllerTest {
                 .andExpect(jsonPath("$.totalMinutes").value(55))
                 .andExpect(jsonPath("$.periods[0].ongoing").value(false));
     }
+
+    @Test
+    void onlyAnAdminAsksTheSensorToReportEveryMinute() throws Exception {
+        Instant until = Instant.parse("2026-10-19T15:10:00Z");
+        when(sensors.identify(5L)).thenReturn(new com.wifisense.dto.IdentifyModeResponse(until, 60));
+
+        mvc.perform(post("/api/networks/5/sensor/identify").with(as("VIEWER"))).andExpect(status().isForbidden());
+        mvc.perform(post("/api/networks/5/sensor/identify").with(as("ADMIN")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.reportSeconds").value(60))
+                .andExpect(jsonPath("$.identifyUntil").value("2026-10-19T15:10:00Z"));
+    }
 }

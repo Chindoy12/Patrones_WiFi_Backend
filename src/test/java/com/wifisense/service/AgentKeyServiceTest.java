@@ -23,7 +23,8 @@ class AgentKeyServiceTest {
     private final AgentKeyRepository keys = mock(AgentKeyRepository.class);
     private final HomeNetworkRepository networks = mock(HomeNetworkRepository.class);
     private final AgentReportThrottle throttle = mock(AgentReportThrottle.class);
-    private final AgentKeyService service = new AgentKeyService(keys, networks, throttle);
+    private final AgentKeyService service = new AgentKeyService(keys, networks, throttle,
+            java.time.Clock.fixed(java.time.Instant.parse("2026-10-19T15:00:00Z"), java.time.ZoneOffset.UTC));
     private final HomeNetwork casa = new HomeNetwork(mock(User.class), "Casa", null, null);
 
     @BeforeEach

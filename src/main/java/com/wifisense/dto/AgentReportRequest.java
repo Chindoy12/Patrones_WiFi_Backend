@@ -69,12 +69,44 @@ public record AgentReportRequest(
      * One connected device: its fingerprint and, when the agent could read them, the maker and the name the device
      * announces on the network (never the MAC). {@code privateMac} says the device uses a random address, which
      * phones and tablets do on every network: its maker cannot be known but it is almost surely one of those.
+     * Since agent 1.7.0 also what the device announces about itself (mDNS/UPnP): {@code model}, the {@code kind} the
+     * agent deduces from it and from the services it offers (a guess), and its {@code role}: SELF for the computer the
+     * agent runs on, ROUTER for the gateway.
      */
     public record DeviceInfo(
             @NotNull @Pattern(regexp = "^[0-9a-f]{24}$", message = "Huella de equipo inválida.") String id,
             @Size(max = 40) String vendor,
             @Size(max = 63) String name,
-            Boolean privateMac) {
+            Boolean privateMac,
+            @Size(max = 63) String model,
+            @Pattern(regexp = "^(PHONE|COMPUTER|TV|PRINTER|CAMERA|SPEAKER|CONSOLE|IOT)$",
+                    message = "Tipo de equipo desconocido.") String kind,
+            @Pattern(regexp = "^(SELF|ROUTER)$", message = "Rol de equipo desconocido.") String role) {
+
+        /** A device as agents older than 1.7.0 describe it. */
+        public DeviceInfo(String id, String vendor, String name, Boolean privateMac) {
+            this(id, vendor, name, privateMac, null, null, null);
+        }
+    }
+
+    /** What the device announces about itself, as stored; blanks become null. */
+    public record Identity(String kind, String role, String model) {
+        public static final Identity NONE = new Identity(null, null, null);
+    }
+
+    /** Kind, role and model per fingerprint (agent 1.7.0 or later); devices it could not recognise are absent. */
+    public java.util.Map<String, Identity> identitiesByFingerprint() {
+        if (devices == null) {
+            return java.util.Map.of();
+        }
+        java.util.Map<String, Identity> byId = new java.util.HashMap<>();
+        for (DeviceInfo device : devices) {
+            String model = device.model() == null || device.model().isBlank() ? null : device.model().trim();
+            if (device.kind() != null || device.role() != null || model != null) {
+                byId.putIfAbsent(device.id(), new Identity(device.kind(), device.role(), model));
+            }
+        }
+        return byId;
     }
 
     /** Neighbouring access points (not the user's own network) the agent saw on one channel. */

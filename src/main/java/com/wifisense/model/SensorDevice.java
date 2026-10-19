@@ -42,6 +42,18 @@ public class SensorDevice {
     @Column(name = "private_mac", nullable = false)
     private boolean privateMac;
 
+    /** What kind of device the agent deduced (PHONE, COMPUTER, TV...): a guess; null when it could not tell. */
+    @Column(length = 12)
+    private String kind;
+
+    /** SELF for the computer the agent runs on, ROUTER for the gateway of the network; null for any other. */
+    @Column(length = 8)
+    private String role;
+
+    /** Model the device announces on the network ("MacBookPro18,1", "Chromecast"); null when it announces none. */
+    @Column(length = 63)
+    private String model;
+
     @Column(name = "first_seen_at", nullable = false, updatable = false)
     private Instant firstSeenAt;
 
@@ -74,6 +86,19 @@ public class SensorDevice {
         }
     }
 
+    /** Keeps the latest kind, role and model the agent reported (it learns more as devices announce themselves). */
+    public void describe(String kind, String role, String model) {
+        if (kind != null) {
+            this.kind = kind;
+        }
+        if (role != null) {
+            this.role = role;
+        }
+        if (model != null && !model.isBlank()) {
+            this.model = model.length() > 63 ? model.substring(0, 63) : model;
+        }
+    }
+
     /** A MAC never stops being random for the same fingerprint, so the flag is only ever turned on. */
     public void markPrivateMac(boolean privateMac) {
         this.privateMac = this.privateMac || privateMac;
@@ -94,6 +119,9 @@ public class SensorDevice {
     public String getHostname() { return hostname; }
     public boolean isAuthorized() { return authorized; }
     public boolean isPrivateMac() { return privateMac; }
+    public String getKind() { return kind; }
+    public String getRole() { return role; }
+    public String getModel() { return model; }
     public Instant getFirstSeenAt() { return firstSeenAt; }
     public Instant getLastSeenAt() { return lastSeenAt; }
 

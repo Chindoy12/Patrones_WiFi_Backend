@@ -53,6 +53,10 @@ wifisense:
     url: ${AI_SERVICE_URL:http://localhost:8000}
     api-key: ${AI_API_KEY:}
     timeout: 10s
+    training:  # the anomaly model trained with the real measurements (sensors and agents)
+      automatic: ${AI_TRAINING_AUTOMATIC:true}  # every week; the new model is used only if it is better
+      cron: "0 0 3 * * MON"
+      zone: America/Bogota
   monitoring:
     enabled: ${MONITORING_ENABLED:true}
     tick: PT30S

@@ -67,7 +67,7 @@ y cierre de sesión. «equipo» = ADMIN, ANALYST o VIEWER. Para un usuario final
 | PUT | `/api/my/account/contact`, `/api/my/account/password` | USER: cambiar correo/celular o contraseña, confirmando con la contraseña actual |
 | POST | `/api/my/networks/{id}/agent/pairing` | USER: código de 8 caracteres (15 min, un uso) para instalar el agente |
 | POST | `/api/agent/pair` `{"code"}` | Instalador del agente: cambia el código por la clave (sin sesión, límite de intentos). El mismo instalador sirve para Mi Wi-Fi y para el sensor de una red del equipo: el código decide cuál |
-| GET | `/api/my/networks/{id}/agent` | USER: último reporte del agente, historial, equipos conectados (con fabricante, nombre y si usan MAC privada), auditoría de seguridad y canal recomendado |
+| GET | `/api/my/networks/{id}/agent` | USER: último reporte del agente, historial, equipos conectados (con fabricante, nombre, modelo, tipo de equipo —celular, computador, TV…—, si usan MAC privada y cuál es el computador del agente y cuál el router), auditoría de seguridad y canal recomendado |
 | POST / DELETE | `/api/my/networks/{id}/agent/key` | USER: crea (la clave se muestra una sola vez, `Cache-Control: no-store`) o revoca la clave del agente |
 | POST | `/api/agent/reports` (cabecera `X-Agent-Key`) | Agente WiFiSense: sin sesión; la clave decide la red (de un usuario o del equipo). 201, 401 o 429 con `Retry-After` |
 | GET / POST / PATCH / DELETE | `/api/users`, `/api/users/{id}/role`, `/api/users/{id}` | ADMIN (solo cuentas del equipo, máximo 3) |
@@ -80,6 +80,7 @@ y cierre de sesión. «equipo» = ADMIN, ANALYST o VIEWER. Para un usuario final
 | PUT | `/api/networks/{id}/sensor/devices/{fingerprint}` `{"label","authorized"}` | ADMIN: nombrar un equipo o marcarlo como no autorizado |
 | GET | `/api/networks/{id}/sensor/devices/{fingerprint}/sessions?days=7` | equipo: cuándo estuvo conectado ese equipo (1 a 30 días): cada periodo, cuántas conexiones y cuánto tiempo |
 | GET | `/api/my/networks/{id}/agent/devices/{fingerprint}/sessions?days=7` | USER: lo mismo para un equipo de su red |
+| POST | `/api/my/networks/{id}/agent/identify` · `/api/networks/{id}/sensor/identify` | USER (su red) · ADMIN: "¿Cuál es este equipo?": durante 10 minutos el agente o sensor reporta cada minuto (la respuesta de cada reporte lleva `nextReportSeconds: 60`), para ver qué equipo desaparece al apagar su Wi-Fi |
 | GET | `/api/reports/networks/{id}/weekly?week=AAAA-MM-DD` | equipo: reporte de lunes a domingo (hora de Colombia) de la semana que contiene esa fecha: totales frente a la semana anterior, cada día, la peor hora, protocolos, equipos, seguridad y lo más importante en palabras |
 | GET / POST | `/api/devices?networkId&limit`, `/api/devices/{id}/sessions?limit` | GET equipo (máximo 500, los más recientes primero) · POST ADMIN |
 | GET | `/api/networks/{id}/measurements?from&to&limit` | equipo |
@@ -89,6 +90,7 @@ y cierre de sesión. «equipo» = ADMIN, ANALYST o VIEWER. Para un usuario final
 | GET | `/api/analyses?networkId&limit`, `/api/analyses/strategies`, `/api/anomalies` | equipo |
 | GET | `/api/anomalies/causes?days=30` | equipo: anomalías agrupadas por causa probable (1 a 365 días) |
 | GET | `/api/ai/model` | equipo: modelo en producción y comparación con LOF y One-Class SVM |
+| GET / POST | `/api/ai/training` | GET equipo: mediciones reales disponibles para entrenar e historial de versiones del modelo · POST ADMIN: entrenar ahora (409 si hay menos de 300 mediciones) |
 | GET / PATCH | `/api/alerts?status`, `/api/alerts/{id}/acknowledge`, `/api/alerts/{id}/resolve` | GET equipo · PATCH ADMIN, ANALYST |
 | GET | `/api/dashboard/summary` | equipo |
 | GET | `/api/dashboard/status` | equipo: estado de la IA, la base de datos, el monitoreo y alertas abiertas |
@@ -226,6 +228,17 @@ interferencia, cobertura débil, falla del proveedor, tráfico sospechoso o no i
 nunca rompe el análisis y siempre concuerda con el veredicto. `GET /api/ai/model` reúne la descripción del modelo y
 su evaluación; mientras la IA la calcula tras reiniciar, responde `evaluationReady: false`.
 
+**IA entrenada con datos reales** (`AiTrainingService`, Avance 16). La IA no lee la base de datos, así que el backend
+le envía las mediciones reales de los últimos 30 días (máximo 10 000): las de los sensores de las redes del equipo
+(fuente `AGENT`, con su tráfico) y las de los agentes de Mi Wi-Fi. Solo viajan y se guardan los números (latencia,
+jitter, pérdida, ancho de banda, señal, tráfico, equipos y paquetes), nunca la red, el usuario ni los equipos. La IA
+entrena un modelo nuevo con el 80 % más antiguo, lo compara con el modelo en uso sobre el 20 % más reciente y sobre
+esas mismas mediciones con fallas simuladas, y lo pone en uso solo si es mejor (`POST /api/v1/model/train`). Cada
+entrenamiento queda en `ai_model_versions` (métricas, decisión y por qué). Se entrena solo cada lunes a las 3:00
+(hora de Colombia; `AI_TRAINING_AUTOMATIC=false` lo apaga) o cuando un ADMIN lo pide. Railway borra el disco de la
+IA al redesplegarla: cada 10 minutos el backend revisa que la IA use la versión activa y, si no, se la reconstruye
+con las mismas mediciones (mismo resultado).
+
 Con cada reporte del agente se piden a la IA cuatro veredictos: auditoría de seguridad
 (`/api/v1/security/assess`), calidad (`/api/v1/quality/score`), anomalías (`/api/v1/anomalies/detect`) y, si el
 agente envió cuántas redes vecinas hay por canal, el **mejor canal Wi-Fi** (`/api/v1/channel/recommend`). Los cuatro
@@ -251,6 +264,7 @@ pasar a HTTP/2 (h2c), uvicorn lo rechaza y descarta el cuerpo de la petición, y
 | `PLAIN_PASSWORDS_ALLOWED` | `true` (por defecto) / `false` | `false`: solo se aceptan contraseñas cifradas por la web |
 | `CORS_ALLOWED_ORIGINS` | `http://localhost:5173` | Orígenes del frontend, separados por coma |
 | `MONITORING_ENABLED` | `true` | Recolección y análisis automáticos |
+| `AI_TRAINING_AUTOMATIC` | `true` (por defecto) | Entrena la IA con las mediciones reales cada lunes a las 3:00 (hora de Colombia) |
 | `DEMO_DATA_SOURCES` | `false` (por defecto) | Solo en una demostración local: `true` permite registrar redes simuladas. En Railway no se define |
 | `BREVO_API_KEY` | `xkeysib-…` (solo en Railway) | Envío del correo de recuperación por la API de Brevo |
 | `MAIL_FROM` | un correo verificado como remitente en Brevo | Remitente del correo de recuperación |
@@ -278,15 +292,16 @@ No hay usuarios de demostración. Al arrancar se crea (o actualiza) el administr
 
 ## Pruebas
 
-`src/test/java` (convención Maven), 339 pruebas:
+`src/test/java` (convención Maven), 349 pruebas:
 
-- **Unitarias y de controladores (328):** fuentes de datos y decoradores, transiciones de estado, las tres
+- **Unitarias y de controladores (337):** fuentes de datos y decoradores, transiciones de estado, las tres
   estrategias, la fachada con mocks, observadores, ciclo de vida de alertas y `@WebMvcTest` que verifica seguridad por
   rol, validación y errores 404, el agente (claves, límite de reportes, equipos nuevos y con MAC privada, canal
   recomendado, IA caída), el panel del equipo con datos reales, las sesiones (rotación, copia detectada, cambio de
   contraseña y de rol), la limpieza nocturna por lotes y el sensor de las redes del equipo (código, clave, reporte
-  convertido en medición con tráfico y protocolos, fuentes permitidas, equipos, auditoría y alertas del sensor).
-- **De integración con PostgreSQL real (11, paquete `integration`):** el backend completo contra una base creada con
+  convertido en medición con tráfico y protocolos, fuentes permitidas, equipos, auditoría y alertas del sensor), el
+  tipo de cada equipo y el modo "¿Cuál es este equipo?" (reportes cada minuto) y el entrenamiento de la IA.
+- **De integración con PostgreSQL real (12, paquete `integration`):** el backend completo contra una base creada con
   las migraciones de WiFiSense-database, conectado como `wifisense_app`. Prueban por HTTP el registro, el inicio de
   sesión sin importar mayúsculas, la renovación, la copia de un refresh token, el cierre de sesión, el cambio de
   contraseña y de rol; y en SQL que un refresh token se gasta una sola vez, que las estadísticas del reporte calculadas
@@ -295,7 +310,8 @@ No hay usuarios de demostración. Al arrancar se crea (o actualiza) el administr
   y encontrar la medición, el tráfico, los protocolos y los equipos en la base; marcar un equipo como no autorizado;
   quitar el sensor deja la clave sin efecto. Y el historial de conexiones (con la tolerancia de 12 minutos) y el
   reporte semanal con los días de Colombia (una medición de las 23:30 del lunes cuenta el lunes, aunque en UTC ya sea
-  martes).
+  martes). Y el entrenamiento de la IA: solo mediciones reales (nunca simuladas), mínimo 300, historial de versiones
+  y reconstrucción de la versión activa cuando la IA se reinicia.
   Se ejecutan cuando existe `WIFISENSE_IT_DATABASE_URL`.
 
 **GitHub Actions** (`.github/workflows/backend.yml`) corre en cada Pull Request y en `main`: crea PostgreSQL 16 con las

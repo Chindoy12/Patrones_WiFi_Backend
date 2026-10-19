@@ -78,6 +78,9 @@ y cierre de sesión. «equipo» = ADMIN, ANALYST o VIEWER. Para un usuario final
 | POST / DELETE | `/api/networks/{id}/sensor/pairing`, `/api/networks/{id}/sensor` | ADMIN: código de 8 caracteres (15 min, un uso) para instalar el sensor · quitar el sensor (su clave deja de servir) |
 | GET | `/api/networks/{id}/sensor/overview` | equipo: último reporte del sensor con la auditoría de seguridad, la calidad y el mejor canal, historial y equipos conectados (fabricante, nombre, dirección privada), como Mi Wi-Fi |
 | PUT | `/api/networks/{id}/sensor/devices/{fingerprint}` `{"label","authorized"}` | ADMIN: nombrar un equipo o marcarlo como no autorizado |
+| GET | `/api/networks/{id}/sensor/devices/{fingerprint}/sessions?days=7` | equipo: cuándo estuvo conectado ese equipo (1 a 30 días): cada periodo, cuántas conexiones y cuánto tiempo |
+| GET | `/api/my/networks/{id}/agent/devices/{fingerprint}/sessions?days=7` | USER: lo mismo para un equipo de su red |
+| GET | `/api/reports/networks/{id}/weekly?week=AAAA-MM-DD` | equipo: reporte de lunes a domingo (hora de Colombia) de la semana que contiene esa fecha: totales frente a la semana anterior, cada día, la peor hora, protocolos, equipos, seguridad y lo más importante en palabras |
 | GET / POST | `/api/devices?networkId&limit`, `/api/devices/{id}/sessions?limit` | GET equipo (máximo 500, los más recientes primero) · POST ADMIN |
 | GET | `/api/networks/{id}/measurements?from&to&limit` | equipo |
 | POST | `/api/networks/{id}/measurements/collect` | ADMIN, ANALYST (una red con sensor responde 503: la mide su sensor) |
@@ -133,6 +136,12 @@ Errores: `application/problem+json` con `detail` y, en validación, `errors` por
   equipos quedan en `network_sensor_devices` solo con la huella con sal de su MAC (`SensorDeviceService`). Un equipo
   nuevo, uno marcado como no autorizado que sigue conectado o una seguridad crítica abren una alerta del equipo (estas
   dos últimas solo si no hay ya una abierta igual). Reportes y equipos de más de 30 días se borran cada noche.
+  Si el computador del sensor está en otro Wi-Fi (el nombre que reporta no es el de la red), el reporte no se guarda
+  como de esa red y el panel muestra en qué Wi-Fi está (`network_sensors.last_ssid`, V37).
+- **Historial de conexiones** (`DeviceSessionTracker`, V37). Cada reporte abre un periodo para un equipo que no estaba
+  conectado y alarga el de uno que sí. Un celular en reposo a veces no responde unos minutos, así que un periodo se
+  cierra solo cuando el equipo lleva más de 12 minutos sin verse (`wifisense.agent.session-gap`, unos dos reportes) y
+  termina en la última vez que se vio. Sirve para Mi Wi-Fi y para las redes del equipo; se borra a los 30 días.
 - **Recuperar la contraseña.** El enlace lleva 256 bits aleatorios; en la base solo queda su SHA-256 (V21), sirve
   una vez y vence en 30 minutos. La respuesta es la misma exista o no la cuenta, y el correo sale en segundo plano
   (`MailDispatcher`), así que ni el texto ni el tiempo de respuesta revelan quién está registrado. Máximo 5
@@ -234,7 +243,7 @@ pasar a HTTP/2 (h2c), uvicorn lo rechaza y descarta el cuerpo de la petición, y
 | `AI_SERVICE_URL` | `http://localhost:8000` | URL interna del servicio de IA |
 | `AI_API_KEY` | | Debe coincidir con la del servicio de IA |
 | `JWT_SECRET` | 32+ caracteres aleatorios | Firma de tokens; el arranque falla si falta |
-| `JWT_TTL` | `8h` (por defecto) | Vida del token de acceso; pasará a `15m` cuando la web renueve la sesión sola |
+| `JWT_TTL` | `15m` (por defecto) | Vida del token de acceso; la web lo renueva sola con el refresh token |
 | `SESSION_REFRESH_TTL` | `14d` (por defecto) | Una sesión sin usar este tiempo tiene que iniciar sesión de nuevo |
 | `MONITORING_RETENTION` | `90d` (por defecto, mínimo `31d`) | Antigüedad de los datos de monitoreo que se borran cada noche |
 | `DATABASE_POOL_SIZE` | `10` (por defecto) | Conexiones máximas a la base de datos |
@@ -269,22 +278,24 @@ No hay usuarios de demostración. Al arrancar se crea (o actualiza) el administr
 
 ## Pruebas
 
-`src/test/java` (convención Maven), 331 pruebas:
+`src/test/java` (convención Maven), 339 pruebas:
 
-- **Unitarias y de controladores (323):** fuentes de datos y decoradores, transiciones de estado, las tres
+- **Unitarias y de controladores (328):** fuentes de datos y decoradores, transiciones de estado, las tres
   estrategias, la fachada con mocks, observadores, ciclo de vida de alertas y `@WebMvcTest` que verifica seguridad por
   rol, validación y errores 404, el agente (claves, límite de reportes, equipos nuevos y con MAC privada, canal
   recomendado, IA caída), el panel del equipo con datos reales, las sesiones (rotación, copia detectada, cambio de
   contraseña y de rol), la limpieza nocturna por lotes y el sensor de las redes del equipo (código, clave, reporte
   convertido en medición con tráfico y protocolos, fuentes permitidas, equipos, auditoría y alertas del sensor).
-- **De integración con PostgreSQL real (8, paquete `integration`):** el backend completo contra una base creada con
+- **De integración con PostgreSQL real (11, paquete `integration`):** el backend completo contra una base creada con
   las migraciones de WiFiSense-database, conectado como `wifisense_app`. Prueban por HTTP el registro, el inicio de
   sesión sin importar mayúsculas, la renovación, la copia de un refresh token, el cierre de sesión, el cambio de
   contraseña y de rol; y en SQL que un refresh token se gasta una sola vez, que las estadísticas del reporte calculadas
   por PostgreSQL son iguales a las de Java y que la limpieza borra solo lo viejo (las alertas abiertas se quedan).
   Además, el recorrido completo del sensor: registrar la red, rechazar una simulada, instalar con el código, reportar
   y encontrar la medición, el tráfico, los protocolos y los equipos en la base; marcar un equipo como no autorizado;
-  quitar el sensor deja la clave sin efecto.
+  quitar el sensor deja la clave sin efecto. Y el historial de conexiones (con la tolerancia de 12 minutos) y el
+  reporte semanal con los días de Colombia (una medición de las 23:30 del lunes cuenta el lunes, aunque en UTC ya sea
+  martes).
   Se ejecutan cuando existe `WIFISENSE_IT_DATABASE_URL`.
 
 **GitHub Actions** (`.github/workflows/backend.yml`) corre en cada Pull Request y en `main`: crea PostgreSQL 16 con las
@@ -294,7 +305,6 @@ integración no corrieron) y construye la imagen Docker que despliega Railway.
 ## Pendiente
 
 Fuentes Router API y SNMP (el sensor mide el tráfico del computador donde está instalado, no el de toda la red);
-pruebas de carga; que la web use el refresh token (fase del frontend) para bajar `JWT_TTL` a 15 minutos; reporte
-semanal.
+pruebas de carga.
 
 Despliegue: ver [DEPLOYMENT.md](DEPLOYMENT.md).

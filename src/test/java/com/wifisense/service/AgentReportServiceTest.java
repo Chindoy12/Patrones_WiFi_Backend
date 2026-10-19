@@ -48,10 +48,11 @@ class AgentReportServiceTest {
     private final HomeNetworkRepository networks = mock(HomeNetworkRepository.class);
     private final AiAnalysisClient ai = mock(AiAnalysisClient.class);
     private final AgentAlertService alerts = mock(AgentAlertService.class);
+    private final DeviceSessionTracker sessions = mock(DeviceSessionTracker.class);
     private final AgentReportService service = new AgentReportService(keyService, throttle, keys, reports, devices,
             networks, ai, alerts, new TransactionTemplate(mock(PlatformTransactionManager.class)),
             new AgentProperties(Duration.ofSeconds(50), Duration.ofDays(30), Duration.ofMinutes(15), 20, 48), JSON,
-            Clock.fixed(NOW, ZoneOffset.UTC));
+            Clock.fixed(NOW, ZoneOffset.UTC), sessions);
     private final HomeNetwork casa = new HomeNetwork(mock(User.class), "Casa", null, null);
     private final AgentKey key = new AgentKey(casa, "f".repeat(64), "wsa_kkkk");
 

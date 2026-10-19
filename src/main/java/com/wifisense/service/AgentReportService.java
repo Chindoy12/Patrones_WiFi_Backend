@@ -48,6 +48,7 @@ public class AgentReportService {
     private final AgentAlertService alerts;
     private final TransactionTemplate transaction;
     private final AgentProperties properties;
+    private final DeviceSessionTracker sessions;
     private final ObjectMapper json;
     private final Clock clock;
 
@@ -55,7 +56,7 @@ public class AgentReportService {
                               AgentReportRepository reports, AgentDeviceRepository devices,
                               HomeNetworkRepository networks, AiAnalysisClient ai, AgentAlertService alerts,
                               TransactionTemplate transaction, AgentProperties properties, ObjectMapper json,
-                              Clock clock) {
+                              Clock clock, DeviceSessionTracker sessions) {
         this.keyService = keyService;
         this.throttle = throttle;
         this.keys = keys;
@@ -67,6 +68,7 @@ public class AgentReportService {
         this.alerts = alerts;
         this.transaction = transaction;
         this.properties = properties;
+        this.sessions = sessions;
         this.json = json;
         this.clock = clock;
     }
@@ -191,6 +193,8 @@ public class AgentReportService {
                 }
             }
         }
+        devices.flush();  // the periods below reference the devices just saved
+        sessions.track(DeviceSessionTracker.Owner.HOME, networkId, hashes, now);
         return new DeviceOutcome(learning ? 0 : fresh, unauthorized);
     }
 

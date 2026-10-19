@@ -2,6 +2,7 @@ package com.wifisense.service;
 
 import com.wifisense.dto.AgentOverview;
 import com.wifisense.dto.AgentReportRequest;
+import com.wifisense.dto.DeviceSessionHistory;
 import com.wifisense.model.SensorDevice;
 import com.wifisense.repository.NetworkRepository;
 import com.wifisense.repository.SensorDeviceRepository;
@@ -27,7 +28,8 @@ class SensorDeviceServiceTest {
 
     private final NetworkRepository networks = mock(NetworkRepository.class);
     private final SensorDeviceRepository devices = mock(SensorDeviceRepository.class);
-    private final SensorDeviceService service = new SensorDeviceService(networks, devices);
+    private final DeviceSessionTracker sessions = mock(DeviceSessionTracker.class);
+    private final SensorDeviceService service = new SensorDeviceService(networks, devices, sessions);
 
     private static AgentReportRequest report(String... hashes) {
         return new AgentReportRequest("1.5.0", "Windows", "Lab", "WPA2", null, "5", 36, -60, null, null, null, null,
@@ -52,6 +54,22 @@ class SensorDeviceServiceTest {
         assertThat(laptop.getHostname()).isEqualTo("PC-Lab");
         assertThat(saved.getAllValues().stream().filter(SensorDevice::isPrivateMac).map(SensorDevice::getFingerprint))
                 .containsExactly(PHONE);
+        // when each one connected: after the devices are written, since the periods reference them
+        var order = inOrder(devices, sessions);
+        order.verify(devices).flush();
+        order.verify(sessions).track(DeviceSessionTracker.Owner.TEAM, 5L, List.of(PHONE, LAPTOP), NOW);
+    }
+
+    @Test
+    void theHistoryOfADeviceIsOnlyForAKnownDeviceOfTheNetwork() {
+        when(networks.existsById(5L)).thenReturn(true);
+        when(devices.findByNetworkIdAndFingerprint(5L, LAPTOP)).thenReturn(Optional.of(new SensorDevice(5L, LAPTOP,
+                BEFORE)));
+        DeviceSessionHistory history = new DeviceSessionHistory(LAPTOP, 7, 0, 0, List.of());
+        when(sessions.history(DeviceSessionTracker.Owner.TEAM, 5L, LAPTOP, 7)).thenReturn(history);
+
+        assertThat(service.history(5L, LAPTOP, 7)).isSameAs(history);
+        assertThatThrownBy(() -> service.history(5L, STRANGER, 7)).isInstanceOf(ResourceNotFoundException.class);
     }
 
     @Test

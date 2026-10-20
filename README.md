@@ -182,8 +182,8 @@ Errores: `application/problem+json` con `detail` y, en validación, `errors` por
   consultar la base de datos. Tras 5 fallos del mismo usuario y dirección (o 20 de una misma dirección) se bloquea
   10 minutos (`LoginAttemptService`).
 - **Tamaño de solicitudes:** cuerpos de más de 16 KB se rechazan con 413 (`RequestSizeLimitFilter`), también cuando
-  llegan por partes sin `Content-Length`: el cuerpo se cuenta mientras se lee (`LimitedBodyRequest`). Solo la subida
-  de la prueba de conexión acepta hasta 8 MB.
+  llegan por partes sin `Content-Length`: el cuerpo se cuenta mientras se lee (`LimitedBodyRequest`). La subida de la
+  prueba de conexión acepta hasta 8 MB y el reporte del agente hasta 128 KB (256 equipos con nombre, modelo y tipo).
 - **Errores:** mensajes en español, sin trazas ni detalles internos (`GlobalExceptionHandler`).
 - **Secretos:** solo en variables de entorno de la plataforma; nunca en el repositorio ni en el frontend.
 
@@ -214,6 +214,9 @@ integración corren con ese mismo usuario.
 - **Respuestas comprimidas** (gzip) para JSON de más de 2 KB; la prueba de conexión nunca se comprime.
 - **Conexiones:** máximo 10 conexiones a la base (`DATABASE_POOL_SIZE`) y una petición espera como máximo 10 s por
   una; al redesplegar, las peticiones en curso terminan antes de apagar (`server.shutdown: graceful`).
+- **Pruebas de carga** ([load-tests/README.md](load-tests/README.md), `load-tests/carga.py`, solo Python estándar): en
+  un computador de 2 núcleos, 50 personas usando la página a la vez dan 176 peticiones por segundo con p95 de 97 ms y
+  ningún error; el límite está en unas 250 peticiones por segundo.
 
 ## Integración con la IA
 
@@ -292,9 +295,9 @@ No hay usuarios de demostración. Al arrancar se crea (o actualiza) el administr
 
 ## Pruebas
 
-`src/test/java` (convención Maven), 349 pruebas:
+`src/test/java` (convención Maven), 351 pruebas:
 
-- **Unitarias y de controladores (337):** fuentes de datos y decoradores, transiciones de estado, las tres
+- **Unitarias y de controladores (339):** fuentes de datos y decoradores, transiciones de estado, las tres
   estrategias, la fachada con mocks, observadores, ciclo de vida de alertas y `@WebMvcTest` que verifica seguridad por
   rol, validación y errores 404, el agente (claves, límite de reportes, equipos nuevos y con MAC privada, canal
   recomendado, IA caída), el panel del equipo con datos reales, las sesiones (rotación, copia detectada, cambio de
@@ -316,11 +319,24 @@ No hay usuarios de demostración. Al arrancar se crea (o actualiza) el administr
 
 **GitHub Actions** (`.github/workflows/backend.yml`) corre en cada Pull Request y en `main`: crea PostgreSQL 16 con las
 migraciones del repositorio de base de datos y el rol `wifisense_app`, ejecuta todas las pruebas (falla si las de
-integración no corrieron) y construye la imagen Docker que despliega Railway.
+integración no corrieron) y construye la imagen Docker que despliega Railway. Las migraciones salen de la rama de la
+base de datos con el mismo nombre que la del Pull Request cuando existe (una migración nueva que aún no tiene merge) y,
+si no, de `main`. Dependabot (`.github/dependabot.yml`) propone cada mes las actualizaciones de Maven, de las acciones
+y de la imagen de Docker.
+
+## Documentos
+
+- [PATTERNS.md](PATTERNS.md): los patrones de diseño, por qué y dónde.
+- [DEPLOYMENT.md](DEPLOYMENT.md): desplegar en Railway paso a paso.
+- [docs/seguridad.md](docs/seguridad.md): revisión de seguridad frente al OWASP Top 10, lo corregido y los riesgos que
+  quedan.
+- [docs/sustentacion.md](docs/sustentacion.md): guion de la sustentación, cifras y preguntas probables.
+- [load-tests/README.md](load-tests/README.md): cómo correr la prueba de carga y sus resultados.
 
 ## Pendiente
 
-Fuentes Router API y SNMP (el sensor mide el tráfico del computador donde está instalado, no el de toda la red);
-pruebas de carga.
+Fuentes Router API y SNMP: el diseño ya las tiene (`RouterApiDataSourceCreator`, `SnmpDataSourceCreator`), pero los
+routers de la casa y de la sede no las ofrecen, así que el sensor mide el tráfico del computador donde está instalado,
+no el de toda la red.
 
 Despliegue: ver [DEPLOYMENT.md](DEPLOYMENT.md).

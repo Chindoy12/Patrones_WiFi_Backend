@@ -6,7 +6,11 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Import;
+import org.springframework.core.task.support.TaskExecutorAdapter;
+import org.springframework.web.servlet.config.annotation.AsyncSupportConfigurer;
+import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 import org.springframework.http.MediaType;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetailsService;
@@ -23,11 +27,24 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @WebMvcTest(controllers = SpeedTestController.class)
-@Import(SecurityConfig.class)
+@Import({SecurityConfig.class, SpeedTestControllerTest.SameThreadStreaming.class})
 @EnableConfigurationProperties({SecurityProperties.class, SpeedTestProperties.class})
 @TestPropertySource(properties = {"wifisense.security.jwt-secret=test-secret-that-is-at-least-32-bytes-long",
         "wifisense.speedtest.max-download=1MB"})
 class SpeedTestControllerTest {
+
+    /**
+     * The download is streamed by another thread. Under MockMvc that thread and the security filters still finishing on
+     * the test thread both touch the same (not thread-safe) mock response, which failed about once in 150 runs
+     * (ConcurrentModificationException). Here the body is written on the request thread; a real server is not affected.
+     */
+    @TestConfiguration
+    static class SameThreadStreaming implements WebMvcConfigurer {
+        @Override
+        public void configureAsyncSupport(AsyncSupportConfigurer configurer) {
+            configurer.setTaskExecutor(new TaskExecutorAdapter(Runnable::run));
+        }
+    }
 
     @Autowired
     private MockMvc mvc;

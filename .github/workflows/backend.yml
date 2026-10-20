@@ -1,7 +1,8 @@
 # Checks every change of the backend before it can reach Railway: compiles it, runs the unit tests and the integration
 # tests against a real PostgreSQL 16 built with the team's migrations (repository Patrones_WiFi_db), connected as
 # wifisense_app, the least-privilege role production uses, and builds the Docker image Railway deploys.
-# Runs on every Pull Request and on main.
+# Runs on every Pull Request and on main. The migrations come from the database branch with the same name when it
+# exists (a Pull Request of the database not merged yet), otherwise from main.
 name: Backend
 
 on:
@@ -39,10 +40,24 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      # A change of the backend often needs a migration that is in a Pull Request of the database with the same branch
+      # name (for example avance17-integrante1) and is not merged yet: then that branch is used, otherwise main.
+      - name: Elegir la rama de la base de datos
+        id: base
+        env:
+          BRANCH: ${{ github.head_ref || github.ref_name }}
+        run: |
+          if git ls-remote --exit-code --heads https://github.com/davidcampino06/Patrones_WiFi_db "refs/heads/$BRANCH" > /dev/null; then
+            echo "ref=$BRANCH" >> "$GITHUB_OUTPUT"
+          else
+            echo "ref=main" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Migraciones del repositorio de base de datos
         uses: actions/checkout@v5
         with:
           repository: davidcampino06/Patrones_WiFi_db
+          ref: ${{ steps.base.outputs.ref }}
           path: base-de-datos
 
       - uses: actions/setup-java@v5

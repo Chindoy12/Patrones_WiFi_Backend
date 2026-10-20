@@ -67,6 +67,36 @@ class RequestSizeLimitFilterTest {
     }
 
     @Test
+    void anAgentReportWith256DevicesFits() throws Exception {
+        // 256 devices of agent 1.7.0 (fingerprint, maker, name, model, kind) plus the old list of fingerprints
+        StringBuilder devices = new StringBuilder();
+        for (int i = 0; i < 256; i++) {
+            devices.append(String.format("{\"id\":\"%024x\",\"vendor\":\"Samsung Electronics\",\"name\":"
+                    + "\"Galaxy-S23-Ultra-de-Ana-Maria-%03d\",\"privateMac\":true,\"model\":\"SM-S918B\","
+                    + "\"kind\":\"PHONE\"},\"%024x\",", i, i, i));
+        }
+        int size = devices.length() + 4_000;  // the rest of the report (Wi-Fi, channels, ports, traffic)
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        AtomicLong read = new AtomicLong();
+
+        filter.doFilter(post(RequestSizeLimitFilter.AGENT_REPORT_PATH, size, true), response, reading(read));
+
+        assertThat(size).isGreaterThan(16 * 1024);
+        assertThat(response.getStatus()).isEqualTo(200);
+        assertThat(read.get()).isEqualTo(size);
+    }
+
+    @Test
+    void anAgentReportBeyondItsLimitIsRejected() throws Exception {
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        filter.doFilter(post(RequestSizeLimitFilter.AGENT_REPORT_PATH, 200_000, false), response,
+                reading(new AtomicLong()));
+
+        assertThat(response.getStatus()).isEqualTo(413);
+    }
+
+    @Test
     void uploadBeyondItsLimitIsRejectedToo() throws Exception {
         MockHttpServletResponse response = new MockHttpServletResponse();
 

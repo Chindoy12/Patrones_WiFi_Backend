@@ -15,14 +15,17 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 
 /**
- * Rejects oversized API bodies (e.g. a huge paste into the login form) before they are parsed. Only the speed-test
- * upload accepts a large body, and it has its own limit.
+ * Rejects oversized API bodies (e.g. a huge paste into the login form) before they are parsed. Two routes need more:
+ * the speed-test upload (its own limit) and the reports of the agent, which list up to 256 devices with their name,
+ * model and kind (about 200 bytes each since agent 1.7.0: a network of a university passes 16 KB easily).
  */
 @Component
 public class RequestSizeLimitFilter extends OncePerRequestFilter {
 
     static final long MAX_BODY_BYTES = 16 * 1024;
+    static final long MAX_AGENT_REPORT_BYTES = 128 * 1024;
     public static final String UPLOAD_PATH = "/api/my/speedtest/upload";
+    public static final String AGENT_REPORT_PATH = "/api/agent/reports";
 
     private final long maxUploadBytes;
 
@@ -38,7 +41,7 @@ public class RequestSizeLimitFilter extends OncePerRequestFilter {
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
             throws ServletException, IOException {
-        long limit = UPLOAD_PATH.equals(request.getRequestURI()) ? maxUploadBytes : MAX_BODY_BYTES;
+        long limit = limitFor(request.getRequestURI());
         if (request.getContentLengthLong() > limit) {
             reject(response);
             return;
@@ -51,6 +54,13 @@ public class RequestSizeLimitFilter extends OncePerRequestFilter {
                 reject(response);
             }
         }
+    }
+
+    private long limitFor(String uri) {
+        if (UPLOAD_PATH.equals(uri)) {
+            return maxUploadBytes;
+        }
+        return AGENT_REPORT_PATH.equals(uri) ? MAX_AGENT_REPORT_BYTES : MAX_BODY_BYTES;
     }
 
     static void reject(HttpServletResponse response) throws IOException {

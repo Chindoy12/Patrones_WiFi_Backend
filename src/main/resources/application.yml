@@ -93,6 +93,19 @@ wifisense:
     max-access-points: 200       # strongest access points kept from one scan
     retention: 30d               # scans (and their observations) deleted every night after this
     access-point-retention: 90d  # access points not seen for this long are deleted
+  capture:  # technical captures of the team networks, run by their sensor (only an ADMIN asks for them)
+    default-seconds: 30          # what the form proposes
+    default-packets: 5000
+    max-seconds: ${CAPTURE_MAX_SECONDS:120}    # the most an administrator may ask (the table accepts up to 300)
+    max-packets: ${CAPTURE_MAX_PACKETS:20000}  # (the table accepts up to 100 000)
+    max-bytes: 20MB              # (the table accepts up to 100 MB)
+    start-timeout: 3m            # a capture the sensor does not pick up in this time fails (AGENT_NO_RESPONSE)
+    result-grace: 90s            # once started, the sensor has the capture's duration plus this to deliver it
+    poll-min-interval: 10s       # the sensor asks for pending captures every 30 s; faster is rejected with 429
+    min-agent-version: 2.0.0     # the first agent that can capture
+    retention: ${CAPTURE_RETENTION:90d}  # captures (statistics and findings) deleted every night after this
+  audit:  # audit of the sensitive operations (Auditoría)
+    retention: ${AUDIT_RETENTION:365d}  # never less than 31 days: the table refuses to delete younger rows
   data-sources:
     demo-enabled: ${DEMO_DATA_SOURCES:false}  # true only for local demos: simulated networks and the server's own probe
     simulation:

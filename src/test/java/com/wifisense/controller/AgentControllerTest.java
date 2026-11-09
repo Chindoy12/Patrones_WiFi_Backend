@@ -58,6 +58,12 @@ class AgentControllerTest {
     @MockitoBean
     private AgentScanService scans;
     @MockitoBean
+    private com.wifisense.service.AgentCaptureService captures;
+    @MockitoBean
+    private com.wifisense.service.CaptureAnalysisService captureAnalysis;
+    @MockitoBean
+    private com.wifisense.service.AgentCapabilitiesService capabilities;
+    @MockitoBean
     private UserDetailsService userDetailsService;
 
     @Test

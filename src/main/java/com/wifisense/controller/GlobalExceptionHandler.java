@@ -16,6 +16,7 @@ import com.wifisense.service.InvalidAgentKeyException;
 import com.wifisense.service.InvalidPairingCodeException;
 import com.wifisense.service.InvalidResetLinkException;
 import com.wifisense.service.InvalidAccountException;
+import com.wifisense.service.CaptureNotPossibleException;
 import com.wifisense.service.ResourceNotFoundException;
 import com.wifisense.service.ScanLimitException;
 import com.wifisense.service.UserLimitException;
@@ -81,6 +82,14 @@ public class GlobalExceptionHandler {
     @ExceptionHandler({DuplicateResourceException.class, UserLimitException.class, IllegalStateException.class})
     ProblemDetail conflict(RuntimeException e) {
         return problem(HttpStatus.CONFLICT, e.getMessage());
+    }
+
+    /** A capture that would fail: 409 with every reason, so the page lists them all. */
+    @ExceptionHandler(CaptureNotPossibleException.class)
+    ProblemDetail captureNotPossible(CaptureNotPossibleException e) {
+        ProblemDetail problem = problem(HttpStatus.CONFLICT, e.getMessage());
+        problem.setProperty("reasons", e.getReasons());
+        return problem;
     }
 
     @ExceptionHandler(DataIntegrityViolationException.class)

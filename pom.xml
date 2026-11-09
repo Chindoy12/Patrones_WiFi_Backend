@@ -35,6 +35,12 @@
             <artifactId>spring-boot-starter-validation</artifactId>
         </dependency>
         <dependency>
+            <!-- the audit of the sensitive operations is an aspect (audit/SensitiveOperationAudit); it already came
+                 with spring-data-jpa, declared here so it does not depend on that. Version managed by Spring Boot. -->
+            <groupId>org.aspectj</groupId>
+            <artifactId>aspectjweaver</artifactId>
+        </dependency>
+        <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-security</artifactId>
         </dependency>

@@ -31,10 +31,14 @@ public interface AiAnalysisClient {
     JsonNode trainModel(JsonNode request);
 
     /**
-     * Facts and inferences about the networks one scan saw around the agent (channels, security, look-alikes),
-     * keeping apart what was seen from what is inferred (with its confidence). Clients without it (test doubles)
-     * behave as if the AI were down.
+     * Facts and inferences about the statistics of a completed capture, keeping apart what was measured from what is
+     * inferred (with its confidence). Clients without it (test doubles) behave as if the AI were down.
      */
+    default JsonNode trafficAnalyze(AiTrafficRequest request) {
+        throw new AiServiceUnavailableException("El análisis de tráfico no está disponible.");
+    }
+
+    /** Facts and inferences about the networks one scan saw around the agent (channels, security, look-alikes). */
     default JsonNode nearbyAnalyze(AiNearbyRequest request) {
         throw new AiServiceUnavailableException("El análisis de redes cercanas no está disponible.");
     }

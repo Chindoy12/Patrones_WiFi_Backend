@@ -1,6 +1,7 @@
 package com.wifisense.security;
 
 import com.nimbusds.jose.jwk.source.ImmutableSecret;
+import com.wifisense.service.AuditService;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -53,7 +54,7 @@ public class SecurityConfig {
             "/api/auth/password/reset");
 
     @Bean
-    SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+    SecurityFilterChain securityFilterChain(HttpSecurity http, ObjectProvider<AuditService> audit) throws Exception {
         return http
                 .csrf(csrf -> csrf.disable())
                 .cors(cors -> {
@@ -66,14 +67,18 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/auth/challenge").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/auth/password/forgot", "/api/auth/password/reset").permitAll()
                         .requestMatchers("/actuator/health").permitAll()
-                        // The agent has no session: AgentReportService and AgentScanService check its own key
-                        // (X-Agent-Key).
-                        .requestMatchers(HttpMethod.POST, "/api/agent/reports", "/api/agent/pair", "/api/agent/scans")
-                        .permitAll()
-                        .requestMatchers(HttpMethod.GET, "/api/agent/scans/next").permitAll()
+                        // The agent has no session: AgentReportService, AgentScanService and AgentCaptureService check
+                        // its own key (X-Agent-Key).
+                        .requestMatchers(HttpMethod.POST, "/api/agent/reports", "/api/agent/pair", "/api/agent/scans",
+                                "/api/agent/captures").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/agent/scans/next", "/api/agent/captures/next",
+                                "/api/agent/captures/*/state").permitAll()
                         .requestMatchers("/api/auth/me").authenticated()
                         .requestMatchers("/api/my/**").hasRole(END_USER)
-                        .requestMatchers("/api/users/**", "/api/observability/**").hasRole(ADMIN)
+                        .requestMatchers("/api/users/**", "/api/observability/**", "/api/admin/**").hasRole(ADMIN)
+                        // Technical captures: only an administrator asks for them and sees their results.
+                        .requestMatchers("/api/networks/*/sensor/captures", "/api/networks/*/sensor/captures/**")
+                        .hasRole(ADMIN)
                         // Real end-user networks: the team members who support them, never a read-only viewer.
                         .requestMatchers("/api/home-networks/**").hasAnyRole(ADMIN, ANALYST)
                         .requestMatchers(HttpMethod.POST, "/api/networks/*/measurements/collect",
@@ -84,7 +89,10 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.DELETE, "/api/**").hasRole(ADMIN)
                         .requestMatchers("/api/**").hasAnyRole(ADMIN, ANALYST, VIEWER)
                         .anyRequest().authenticated())
-                .exceptionHandling(errors -> errors.accessDeniedHandler(new StaffOnlyAccessDeniedHandler()))
+                .exceptionHandling(errors -> errors.accessDeniedHandler(
+                        // the audit is optional: the web tests load the security without the services
+                        new StaffOnlyAccessDeniedHandler((user, method, path) ->
+                                audit.ifAvailable(service -> service.deniedRequest(user, method, path)))))
                 .oauth2ResourceServer(oauth -> oauth.bearerTokenResolver(bearerTokenResolver())
                         .jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter())))
                 .build();

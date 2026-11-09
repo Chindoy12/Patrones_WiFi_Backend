@@ -41,7 +41,23 @@ public record AgentReportRequest(
         @Size(max = 60, message = "Demasiados canales en un reporte.") @Valid List<ChannelCount> channelCounts,
         @Min(0) @Max(10_000_000_000_000L) Long trafficBytes,
         @Min(0) @Max(100_000_000_000L) Long trafficPackets,
-        @Size(max = 8, message = "Demasiados protocolos en un reporte.") @Valid List<ProtocolCount> protocolPackets) {
+        @Size(max = 8, message = "Demasiados protocolos en un reporte.") @Valid List<ProtocolCount> protocolPackets,
+        @Valid Capabilities capabilities) {
+
+    /** Report of an agent older than 2.0.0, which did not check what its computer can do. */
+    public AgentReportRequest(String agentVersion, String platform, String ssid, String authentication, String cipher,
+                              String band, Integer channel, Integer signalDbm, Integer signalPercent,
+                              Double rxRateMbps, Double txRateMbps, Integer neighborsSameChannel,
+                              Integer neighborsTotal, String wifiNote, Double latencyMs, Double jitterMs,
+                              Double packetLossPct, Double gatewayLatencyMs, Integer deviceCount,
+                              List<String> deviceHashes, List<DeviceInfo> devices, List<Integer> openPorts,
+                              List<ChannelCount> channelCounts, Long trafficBytes, Long trafficPackets,
+                              List<ProtocolCount> protocolPackets) {
+        this(agentVersion, platform, ssid, authentication, cipher, band, channel, signalDbm, signalPercent, rxRateMbps,
+                txRateMbps, neighborsSameChannel, neighborsTotal, wifiNote, latencyMs, jitterMs, packetLossPct,
+                gatewayLatencyMs, deviceCount, deviceHashes, devices, openPorts, channelCounts, trafficBytes,
+                trafficPackets, protocolPackets, null);
+    }
 
     /** Report of an agent older than 1.4.0, which did not measure the traffic of its computer. */
     public AgentReportRequest(String agentVersion, String platform, String ssid, String authentication, String cipher,
@@ -53,7 +69,7 @@ public record AgentReportRequest(
                               List<ChannelCount> channelCounts) {
         this(agentVersion, platform, ssid, authentication, cipher, band, channel, signalDbm, signalPercent, rxRateMbps,
                 txRateMbps, neighborsSameChannel, neighborsTotal, wifiNote, latencyMs, jitterMs, packetLossPct,
-                gatewayLatencyMs, deviceCount, deviceHashes, devices, openPorts, channelCounts, null, null, null);
+                gatewayLatencyMs, deviceCount, deviceHashes, devices, openPorts, channelCounts, null, null, null, null);
     }
 
     /**
@@ -95,6 +111,23 @@ public record AgentReportRequest(
                           String role) {
             this(id, vendor, name, privateMac, model, kind, role, null);
         }
+    }
+
+    /**
+     * What the agent's computer can do (agent 2.0.0), checked by the agent itself: whether technical captures were
+     * allowed on that computer, the capture tools it can use, whether it runs as administrator, whether the Wi-Fi
+     * adapter declares monitor mode and in how many interfaces it could capture. Absent fields are false/unknown.
+     */
+    public record Capabilities(
+            Boolean elevated,
+            Boolean captureConsent,
+            Boolean npcap,
+            Boolean pktmon,
+            Boolean rawSocket,
+            Boolean packetSocket,
+            @Pattern(regexp = "^(SUPPORTED|UNSUPPORTED|UNKNOWN)$", message = "Modo monitor desconocido.")
+            String monitorMode,
+            @Min(0) @Max(64) Integer captureInterfaces) {
     }
 
     /** What the device announces about itself, as stored; blanks become null. */

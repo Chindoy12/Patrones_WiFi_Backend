@@ -19,10 +19,34 @@ public class StaffOnlyAccessDeniedHandler implements AccessDeniedHandler {
 
     private static final String END_USER = "ROLE_USER";
 
+    /** Told about every refusal (the audit of sensitive operations), with the method, the path and the person. */
+    private final DeniedListener listener;
+
+    @FunctionalInterface
+    public interface DeniedListener {
+        void denied(String username, String method, String path);
+    }
+
+    public StaffOnlyAccessDeniedHandler() {
+        this((username, method, path) -> {
+        });
+    }
+
+    public StaffOnlyAccessDeniedHandler(DeniedListener listener) {
+        this.listener = listener;
+    }
+
     @Override
     public void handle(HttpServletRequest request, HttpServletResponse response, AccessDeniedException e)
             throws IOException {
-        boolean endUser = isEndUser(SecurityContextHolder.getContext().getAuthentication());
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        try {
+            listener.denied(authentication == null ? null : authentication.getName(), request.getMethod(),
+                    request.getRequestURI());
+        } catch (RuntimeException ignored) {
+            // the audit never changes the answer
+        }
+        boolean endUser = isEndUser(authentication);
         HttpStatus status = endUser ? HttpStatus.NOT_FOUND : HttpStatus.FORBIDDEN;
         String detail = endUser ? "El recurso solicitado no existe." : "No tienes permiso para realizar esta acción.";
         response.setStatus(status.value());

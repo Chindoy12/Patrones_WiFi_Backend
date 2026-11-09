@@ -32,6 +32,7 @@ public class HttpAiAnalysisClient implements AiAnalysisClient {
     private static final String QUALITY_PATH = "/api/v1/quality/score";
     private static final String SECURITY_PATH = "/api/v1/security/assess";
     private static final String CHANNEL_PATH = "/api/v1/channel/recommend";
+    private static final String TRAFFIC_PATH = "/api/v1/traffic/analyze";
     private static final String NEARBY_PATH = "/api/v1/nearby/analyze";
     private static final String HEALTH_PATH = "/health";
 
@@ -149,6 +150,20 @@ public class HttpAiAnalysisClient implements AiAnalysisClient {
                     .body(JsonNode.class);
         } catch (RestClientException e) {
             throw new AiServiceUnavailableException("Falló la recomendación de canal: " + e.getMessage(), e);
+        }
+    }
+
+    @Override
+    public JsonNode trafficAnalyze(AiTrafficRequest request) {
+        try {
+            return restClient.post()
+                    .uri(TRAFFIC_PATH)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(request)
+                    .retrieve()
+                    .body(JsonNode.class);
+        } catch (RestClientException e) {
+            throw new AiServiceUnavailableException("Falló el análisis de tráfico: " + e.getMessage(), e);
         }
     }
 

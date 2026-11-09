@@ -98,6 +98,11 @@ public class CircuitBreakerAiClient implements AiAnalysisClient {
     }
 
     @Override
+    public JsonNode trafficAnalyze(AiTrafficRequest request) {
+        return call(() -> target.trafficAnalyze(request));
+    }
+
+    @Override
     public JsonNode nearbyAnalyze(AiNearbyRequest request) {
         return call(() -> target.nearbyAnalyze(request));
     }

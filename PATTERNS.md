@@ -269,6 +269,23 @@ reciente, sin que la fachada sepa que existen (`ObserverTest`).
 recibir mediciones: crearía una dependencia circular (fachada → publicador → observador → fachada). El
 `MonitoringJob` orquesta recolección y análisis de forma explícita, que es más fácil de seguir.
 
+### Segundo uso: la auditoría de operaciones sensibles (`SensitiveOperationAudit`, Avance 24)
+
+**Problem.** Las operaciones que deben quedar auditadas (crear o borrar cuentas, cambiar roles, bloquear equipos,
+códigos y claves de sensores y agentes, borrar redes) viven en ocho servicios con muchos llamadores y pruebas.
+Escribir la auditoría dentro de cada uno mezclaría dos responsabilidades y cambiaría todos sus constructores.
+
+**Solution.** Un aspecto de Spring AOP observa los métodos públicos de esos servicios: registra `SUCCESS` cuando
+terminan y `FAILED` cuando lanzan una excepción, sin que los servicios sepan que existe. Corre fuera de su transacción
+(orden 0), así que un `SUCCESS` solo se escribe después de que el cambio quedó guardado. Las capturas, que se diseñaron
+con la auditoría desde el principio, la registran directamente (`TrafficCaptureService`), y los accesos denegados los
+avisa `StaffOnlyAccessDeniedHandler`.
+
+**Ejemplo de ejecución.** Un administrador cambia el rol de Eva a VIEWER: `UserService.changeRole` termina, el aspecto
+recibe el `UserResponse` y escribe «Cambió el rol de una cuenta — Cuenta Eva: nuevo rol VIEWER» con el administrador de
+la sesión como autor (`SensitiveOperationAuditTest`). Nunca se escribe una contraseña, una clave, un código, una MAC ni
+el nombre del equipo de un usuario final.
+
 ---
 
 ## 6. Facade

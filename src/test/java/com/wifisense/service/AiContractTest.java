@@ -151,6 +151,25 @@ class AiContractTest {
     }
 
     @Test
+    void theStatisticsOfACaptureTravelAsTheAiExpectsAndItsFactsAndInferencesAreRead() throws IOException {
+        com.wifisense.repository.MeasurementRepository measurements =
+                mock(com.wifisense.repository.MeasurementRepository.class);
+        com.wifisense.model.Measurement latest = mock(com.wifisense.model.Measurement.class);
+        when(latest.getPacketLossPct()).thenReturn(0.4);
+        when(measurements.findByNetworkIdOrderByMeasuredAtDesc(any(), any())).thenReturn(List.of(latest));
+        CaptureAnalysisService analysis = new CaptureAnalysisService(null, measurements, new CaptureFindingRules(), ai,
+                null);
+        com.wifisense.model.TrafficCapture capture = CaptureFixtures.running(CaptureFixtures.network(4), 7L,
+                CaptureFixtures.NOW);
+        new CaptureRecorder().apply(capture, CaptureFixtures.completed(7L), CaptureFixtures.NOW.plusSeconds(31));
+
+        assertSameJson(analysis.request(capture), "traffic_request.json");
+        List<com.wifisense.model.CaptureFinding> read = CaptureAnalysisService.parse(contract("traffic_response.json"));
+        assertThat(read).extracting(com.wifisense.model.CaptureFinding::getCode)
+                .contains("TRAFFIC_VOLUME", "CONNECTION_LOSS");
+    }
+
+    @Test
     void theAccessPointsOfAScanTravelAsTheAiExpectsAndItsReadingIsKeptApart() throws IOException {
         List<com.wifisense.model.WifiScanObservation> seen = List.of(
                 seen("Casa de Ana", false, "WPA2", "CCMP", 6, 35, -78, true, "Huawei"),

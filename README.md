@@ -71,7 +71,10 @@ y cierre de sesión. «equipo» = ADMIN, ANALYST o VIEWER. Para un usuario final
 | POST | `/api/agent/pair` `{"code"}` | Instalador del agente: cambia el código por la clave (sin sesión, límite de intentos). El mismo instalador sirve para Mi Wi-Fi y para el sensor de una red del equipo: el código decide cuál |
 | GET | `/api/my/networks/{id}/agent` | USER: último reporte del agente, historial, equipos conectados (con fabricante, nombre, modelo, tipo de equipo —celular, computador, TV…—, si usan MAC privada y cuál es el computador del agente y cuál el router), auditoría de seguridad y canal recomendado |
 | POST / DELETE | `/api/my/networks/{id}/agent/key` | USER: crea (la clave se muestra una sola vez, `Cache-Control: no-store`) o revoca la clave del agente |
-| POST | `/api/agent/reports` (cabecera `X-Agent-Key`) | Agente WiFiSense: sin sesión; la clave decide la red (de un usuario o del equipo). 201, 401 o 429 con `Retry-After` |
+| POST | `/api/agent/reports` (cabecera `X-Agent-Key`) | Agente WiFiSense: sin sesión; la clave decide la red (de un usuario o del equipo). 201, 401 o 429 con `Retry-After`. La respuesta lleva `scanId` cuando el agente debe escanear las redes cercanas |
+| GET | `/api/my/networks/{id}/nearby` | USER: redes cercanas de su red (último resultado, escaneo en curso, si está desactualizado). Ver [Redes cercanas](#redes-cercanas) |
+| POST / GET | `/api/my/networks/{id}/scans` · `/api/my/networks/{id}/scans/{scanId}` | USER: «Escanear ahora» (202) · historial de escaneos · lo que vio un escaneo |
+| GET / POST | `/api/agent/scans/next` · `/api/agent/scans` (cabecera `X-Agent-Key`) | Agente de Mi Wi-Fi: ¿hay un escaneo pedido? (200 `{"scanId"}` o 204) · entregar el resultado |
 | GET / POST / PATCH / DELETE | `/api/users`, `/api/users/{id}/role`, `/api/users/{id}` | ADMIN (solo cuentas del equipo, máximo 3) |
 | GET / POST | `/api/locations`, `/api/locations/{id}/zones`, `/api/zones` | GET equipo · POST ADMIN |
 | GET / POST / PUT / DELETE | `/api/networks[/{id}]` | GET equipo · resto ADMIN |
@@ -103,6 +106,63 @@ y cierre de sesión. «equipo» = ADMIN, ANALYST o VIEWER. Para un usuario final
 | GET | `/actuator/health` | público |
 
 Errores: `application/problem+json` con `detail` y, en validación, `errors` por campo.
+
+## Redes cercanas
+
+El agente de Mi Wi-Fi escanea las redes Wi-Fi que alcanza a ver la antena de su computador (`netsh wlan` en Windows,
+`nmcli` en Linux). El servidor nunca le manda un comando: solo el número de un escaneo; el agente decide escanear.
+
+**Ciclo de un escaneo** (`WifiScanSession`): `PENDING` (pedido) → `RUNNING` (el agente lo recogió) → `COMPLETED` o
+`FAILED` con su motivo (`NO_ADAPTER`, `ADAPTER_OFF`, `SERVICE_OFF`, `LOCATION_PERMISSION`, `COMMAND_FAILED`, `TIMEOUT`,
+`UNREADABLE_OUTPUT`, `UNSUPPORTED_OS` o `AGENT_NO_RESPONSE`). Un escaneo terminado no vuelve a cambiar, y cada red tiene
+como mucho uno esperando o en curso. El identificador de la operación es el `id` del escaneo.
+
+| Método y ruta | Quién | Respuestas |
+|---|---|---|
+| `POST /api/my/networks/{id}/scans` | USER dueño de la red | **202** el escaneo `PENDING` · **404** la red no es suya o no existe · **409** sin agente instalado, agente sin reportar en 15 min o ya hay un escaneo en curso · **429** con `Retry-After` si se pidió otro hace menos de 30 s |
+| `GET /api/my/networks/{id}/nearby` | USER dueño | **200** `{agentInstalled, agentOnline, current, lastCompleted, stale, staleAfterMinutes, nextScheduledAt, manualAvailableAt, accessPoints[]}` · **404** |
+| `GET /api/my/networks/{id}/scans?limit=10` | USER dueño | **200** historial, el más reciente primero (1 a 50) · **404** |
+| `GET /api/my/networks/{id}/scans/{scanId}` | USER dueño | **200** `{scan, accessPoints[]}` · **404** también si el escaneo es de otra red |
+| `GET /api/agent/scans/next` | agente (`X-Agent-Key`) | **200** `{"scanId"}` (pasa a `RUNNING`) · **204** nada pendiente · **401** clave inválida · **429** si pregunta más de una vez cada 10 s |
+| `POST /api/agent/scans` | agente (`X-Agent-Key`) | **200** el escaneo terminado · **400** valores fuera de rango (por campo) · **401** · **404** escaneo de otra red · **409** el escaneo ya terminó o el resultado llegó después de 3 minutos |
+
+Cada punto de acceso que envía el agente: `bssid` (huella SHA-256 con sal, 24 hex: nunca el BSSID), `bssidSuffix` (solo
+el último byte), `vendor`, `ssid` (vacío = red oculta; se guardan tildes, emoji y comillas, sin caracteres de control),
+`signalPercent` 0–100, `signalDbm` −120–0 solo si el sistema lo dio, `channel` 1–233, `band` 2.4/5/6, `radioType`,
+`authentication` OPEN/WEP/WPA/WPA2/WPA3/UNKNOWN, `securityLabel`, `cipher` y `connected`. Hasta 300 por escaneo; se
+guardan los 200 de mejor señal.
+
+**Propiedad de los datos:** todo cuelga de la red de Mi Wi-Fi; las rutas de usuario comprueban que la red sea del que
+pregunta (si no, 404 como una red inexistente) y las del agente toman la red de su clave, nunca del cuerpo. El equipo
+(ADMIN, ANALYST, VIEWER) no ve estas redes.
+
+**Programación y límites** (`wifisense.scan.*` en `application.yml`): el servidor pide un escaneo con el reporte cuando
+el último tiene más de 60 min; «Escanear ahora» como mucho cada 30 s; un escaneo que el agente no termina en 3 min
+falla como `AGENT_NO_RESPONSE`; el resultado se marca desactualizado después de 150 min; cada noche se borran los
+escaneos de más de 30 días y los puntos de acceso que no se ven hace 90.
+
+## Capturas técnicas, auditoría y router (Avance 24)
+
+Contrato completo de cada endpoint (rol, validaciones, respuestas y estados) en
+[docs/api-avance24.md](docs/api-avance24.md).
+
+- **Capturas técnicas** (solo ADMIN, solo redes del equipo con sensor): el administrador escribe el propósito
+  autorizado y los límites; el sensor (agente 2.0.0) la toma, pregunta cada pocos segundos si debe detenerse y entrega
+  solo conteos (paquetes, bytes, protocolos, servicios, paquetes por segundo, equipos distintos), nunca una dirección
+  ni contenido. Antes de crearla, el backend comprueba y explica todo lo que la haría fallar (sensor sin reportar,
+  agente viejo, sin permiso local en el computador del sensor, sin herramienta de captura) y los cuatro escenarios de
+  lo que una captura puede ver. Los hechos (reglas del backend) y las inferencias de la IA (con su confianza) se guardan
+  aparte; si la IA no responde, el backend analiza con sus propias reglas y lo dice.
+- **Auditoría** (`audit_events`): quién hizo cada operación sensible, cuándo, sobre qué y con qué resultado, incluidos
+  los intentos sin permiso. Solo lectura para los administradores; la base de datos impide modificarla.
+- **Retención:** capturas 90 días (`CAPTURE_RETENTION`), auditoría 365 (`AUDIT_RETENTION`, nunca menos de 31),
+  escaneos 30; los archivos de captura nunca llegan al servidor (el agente los borra al terminar).
+- **Router:** qué se sabe del router de una red (fabricante y modelo, nombres que respondió su DNS) y, dicho sin
+  rodeos, lo que WiFiSense no puede hacer (lista oficial de clientes, bloquear, cambiar la contraseña), con los pasos
+  para hacerlo en el router. No se pide ni se guarda la clave del router.
+- **Nombres de los equipos:** cada equipo dice de dónde salió su nombre (`nameSource`) y qué tan identificado está
+  (`identification`: de `ALIAS`, el nombre que le puso la persona, a `UNKNOWN`); una estimación por el fabricante nunca
+  se presenta como el nombre.
 
 ## Seguridad
 
@@ -288,6 +348,9 @@ pasar a HTTP/2 (h2c), uvicorn lo rechaza y descarta el cuerpo de la petición, y
 | `MAIL_FROM` | un correo verificado como remitente en Brevo | Remitente del correo de recuperación |
 | `FRONTEND_URL` | `https://patrones-wi-fi-froned-coral.vercel.app` | A dónde apunta el enlace del correo |
 | `MAIL_LOG_LINKS` | `false` | Solo en desarrollo local: `true` escribe el enlace en el log en lugar de enviarlo |
+| `CAPTURE_MAX_SECONDS` / `CAPTURE_MAX_PACKETS` | `120` / `20000` (por defecto) | Lo más que un administrador puede pedir en una captura (la tabla acepta hasta 300 s y 100 000 paquetes) |
+| `CAPTURE_RETENTION` | `90d` (por defecto) | Antigüedad de las capturas (estadísticas y hallazgos) que se borran cada noche |
+| `AUDIT_RETENTION` | `365d` (por defecto, nunca menos de `31d`) | Antigüedad de la auditoría que se borra cada noche |
 
 Copia `.env.example`, complétalo y expórtalo en tu terminal o IDE. Nunca subas `.env`.
 
@@ -310,9 +373,9 @@ No hay usuarios de demostración. Al arrancar se crea (o actualiza) el administr
 
 ## Pruebas
 
-`src/test/java` (convención Maven), 376 pruebas:
+`src/test/java` (convención Maven), 542 pruebas:
 
-- **Unitarias y de controladores (361):** fuentes de datos y decoradores, transiciones de estado, las tres
+- **Unitarias y de controladores (522):** fuentes de datos y decoradores, transiciones de estado, las tres
   estrategias, la fachada con mocks, observadores, ciclo de vida de alertas y `@WebMvcTest` que verifica seguridad por
   rol, validación y errores 404, el agente (claves, límite de reportes, equipos nuevos y con MAC privada, canal
   recomendado, IA caída), el panel del equipo con datos reales, las sesiones (rotación, copia detectada, cambio de
@@ -321,8 +384,15 @@ No hay usuarios de demostración. Al arrancar se crea (o actualiza) el administr
   tipo de cada equipo y el modo "¿Cuál es este equipo?" (reportes cada minuto) y el entrenamiento de la IA. Desde el
   Avance 18 también el Circuit Breaker (`CircuitBreakerAiClientTest`), el método plantilla de las fuentes
   (`DataSourceCreatorTemplateTest`) y el de los equipos (`DeviceRegistryTest`), el análisis fuera de la
-  transacción y el contrato con la IA (`AiContractTest`).
-- **De integración con PostgreSQL real (15, paquete `integration`):** el backend completo contra una base creada con
+  transacción y el contrato con la IA (`AiContractTest`). Desde el Avance 24, las redes cercanas: el ciclo de un
+  escaneo y sus motivos de falla, un punto de acceso por BSSID, nombres con caracteres especiales, la cola (uno por
+  red, el escaneo abandonado falla, el programado cada hora), el registro de resultados, la propiedad de las redes,
+  los límites y los endpoints del usuario y del agente. Y las capturas técnicas: estados, cola (una por red, la
+  abandonada falla), qué impide capturar y los cuatro escenarios, el registro de un resultado (rechaza lo que no
+  cuadra), las reglas de hallazgos, el análisis con la IA y sin ella (hechos aparte de inferencias, sin repetir lo que
+  ya dice el backend), la auditoría (el aspecto, quién la escribe, los accesos denegados, la consulta y la retención),
+  el router, la lectura de la IA de las redes cercanas y el contrato con la IA de ambos análisis.
+- **De integración con PostgreSQL real (20, paquete `integration`):** el backend completo contra una base creada con
   las migraciones de WiFiSense-database, conectado como `wifisense_app`. Prueban por HTTP el registro, el inicio de
   sesión sin importar mayúsculas, la renovación, la copia de un refresh token, el cierre de sesión, el cambio de
   contraseña y de rol; y en SQL que un refresh token se gasta una sola vez, que las estadísticas del reporte calculadas
@@ -334,7 +404,13 @@ No hay usuarios de demostración. Al arrancar se crea (o actualiza) el administr
   martes). Y el entrenamiento de la IA: solo mediciones reales (nunca simuladas), mínimo 300, historial de versiones
   y reconstrucción de la versión activa cuando la IA se reinicia. Y el aislamiento entre usuarios: cambiar el id de
   una red en el navegador nunca muestra ni cambia datos de otra persona (responde 404, igual que una red que no
-  existe) y un usuario final no sabe que existen las rutas del equipo (`UserIsolationIntegrationTest`).
+  existe) y un usuario final no sabe que existen las rutas del equipo (`UserIsolationIntegrationTest`). Y el escaneo
+  de redes cercanas de punta a punta (`WifiScanFlowIntegrationTest`): el programado llega con el reporte, el manual
+  se recoge entre reportes, repetirlo no copia los puntos de acceso, un fallo guarda su motivo y ni otro usuario ni
+  el agente de otra red pueden leer o escribir los escaneos ajenos. Y la captura técnica de punta a punta
+  (`CaptureFlowIntegrationTest`): rechazada y auditada mientras el sensor no puede capturar, pedida con propósito,
+  tomada por el sensor con sus límites, detenida a pedido, con resultado que solo trae conteos; una analista no puede
+  pedirla ni leerla (queda `DENIED` en la auditoría) y ni el agente de Mi Wi-Fi ni el sensor de otra red la tocan.
   Se ejecutan cuando existe `WIFISENSE_IT_DATABASE_URL`.
 
 **GitHub Actions** (`.github/workflows/backend.yml`) corre en cada Pull Request y en `main`: crea PostgreSQL 16 con las
@@ -356,6 +432,8 @@ y de la imagen de Docker.
 - [docs/seguridad.md](docs/seguridad.md): revisión de seguridad frente al OWASP Top 10, lo corregido y los riesgos que
   quedan.
 - [docs/sustentacion.md](docs/sustentacion.md): guion de la sustentación, cifras y preguntas probables.
+- [docs/api-avance24.md](docs/api-avance24.md): capturas técnicas, auditoría, router, nombres de los equipos y la
+  lectura de la IA de las redes cercanas.
 - [load-tests/README.md](load-tests/README.md): cómo correr la prueba de carga y sus resultados.
 
 ## Pendiente

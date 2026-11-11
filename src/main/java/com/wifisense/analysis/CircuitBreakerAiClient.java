@@ -5,7 +5,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.HttpClientErrorException;
 
@@ -31,9 +30,12 @@ import java.util.function.Supplier;
  * <p>
  * A 4xx answer means the service is up and refused the request (for example a validation error): it does not count
  * as a failure of availability.
+ * <p>
+ * In the application the services do not get this object directly: they get {@link CachingAiClient}, the caching
+ * proxy, which only reaches this one when it has no fresh answer. The chain is caching proxy → protection proxy (this
+ * class) → HTTP adapter → AI service.
  */
 @Component
-@Primary
 public class CircuitBreakerAiClient implements AiAnalysisClient {
 
     public enum State { CLOSED, OPEN, HALF_OPEN }

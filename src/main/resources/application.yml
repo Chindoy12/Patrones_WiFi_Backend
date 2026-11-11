@@ -56,6 +56,9 @@ wifisense:
     circuit:  # Proxy with Circuit Breaker: after this many failures in a row, calls fail at once for open-for
       failures: 2
       open-for: 30s
+    cache:  # caching Proxy: an answer that only depends on the data sent (quality, security, channel, scan) is reused
+      ttl: ${AI_CACHE_TTL:10m}
+      max-entries: 500  # per kind of question; the least recently used leaves first
     training:  # the anomaly model trained with the real measurements (sensors and agents)
       automatic: ${AI_TRAINING_AUTOMATIC:true}  # every week; the new model is used only if it is better
       cron: "0 0 3 * * MON"

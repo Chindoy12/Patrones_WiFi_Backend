@@ -23,13 +23,13 @@ Java 21 · Spring Boot 3.5 · Spring Web · Spring Data JPA / Hibernate · Bean 
 | `repository` | Interfaces Spring Data. |
 | `service` | Casos de uso: redes, dispositivos, mediciones, alertas, reportes, monitoreo programado. |
 | `network` | Fuentes de datos (Factory Method), `decorator/` (Decorator) y `state/` (State). |
-| `analysis` | Estrategias de análisis (Strategy), cliente de IA (`HttpAiAnalysisClient`, Adapter; `CircuitBreakerAiClient`, Proxy) y `NetworkAnalysisFacade` (Facade). |
+| `analysis` | Estrategias de análisis (Strategy), cliente de IA (`HttpAiAnalysisClient`, Adapter; `CircuitBreakerAiClient` y `CachingAiClient`, Proxy) y `NetworkAnalysisFacade` (Facade). |
 | `event` | Eventos y observadores (Observer). |
 | `security` | JWT, carga de usuarios, reglas de autorización y CORS. |
 | `config` | Beans transversales (`Clock`). |
 
 Nueve patrones verificados en el código, cada uno con su prueba: Factory Method, Decorator, Strategy, State, Observer,
-Facade, Adapter, Template Method y Proxy con Circuit Breaker. El problema que resuelve cada uno, un ejemplo de
+Facade, Adapter, Template Method y Proxy (de protección con Circuit Breaker y de caché). El problema que resuelve cada uno, un ejemplo de
 ejecución, el diagrama de clases y los patrones que se investigaron y descartaron están en **[PATTERNS.md](PATTERNS.md)**.
 
 ## POO y SOLID en el código
@@ -294,6 +294,14 @@ conexión pero no responde: cada reporte de un sensor tardaba **30 s** (tres lla
 tarda 21 s y los siguientes **0,1 s**. El análisis con IA ya no espera dentro de una transacción: la estrategia corre
 entre dos transacciones cortas.
 
+**La misma pregunta no se le hace dos veces a la IA** (`CachingAiClient`, Avance 25). Delante del Circuit Breaker hay
+un proxy de caché: la calificación de una conexión, la auditoría de seguridad, el canal recomendado y la lectura de un
+escaneo dependen solo de los datos enviados, así que si llega otra vez la misma solicitud en 10 min se responde desde
+memoria (el tablero de una red abierto por varias personas, los reportes de un agente cuya red no cambió, «Analizar con
+IA» sobre el mismo escaneo). Las anomalías, la descripción del modelo, las capturas, el entrenamiento y la salud
+siempre van a la IA, y una falla nunca se guarda. Se configura con `AI_CACHE_TTL` (10 min por defecto); el detalle está
+en [PATTERNS.md](PATTERNS.md#segundo-uso-proxy-de-caché-cachingaiclient-avance-25).
+
 **Contrato con la IA.** `src/test/resources/contracts` tiene ejemplos reales de lo que el backend envía y la IA
 responde; el repositorio de la IA tiene los mismos archivos en `tests/contracts`. `AiContractTest` comprueba que el
 backend envía exactamente esas solicitudes (con el `ObjectMapper` de Spring Boot) y que el código que lee las
@@ -333,6 +341,7 @@ pasar a HTTP/2 (h2c), uvicorn lo rechaza y descarta el cuerpo de la petición, y
 | `DATABASE_USERNAME` / `DATABASE_PASSWORD` | | Credenciales |
 | `AI_SERVICE_URL` | `http://localhost:8000` | URL interna del servicio de IA |
 | `AI_API_KEY` | | Debe coincidir con la del servicio de IA |
+| `AI_CACHE_TTL` | `10m` | Cuánto se reutiliza una respuesta de la IA que solo depende de los datos enviados (proxy de caché) |
 | `JWT_SECRET` | 32+ caracteres aleatorios | Firma de tokens; el arranque falla si falta |
 | `JWT_TTL` | `15m` (por defecto) | Vida del token de acceso; la web lo renueva sola con el refresh token |
 | `SESSION_REFRESH_TTL` | `14d` (por defecto) | Una sesión sin usar este tiempo tiene que iniciar sesión de nuevo |
@@ -373,9 +382,9 @@ No hay usuarios de demostración. Al arrancar se crea (o actualiza) el administr
 
 ## Pruebas
 
-`src/test/java` (convención Maven), 542 pruebas:
+`src/test/java` (convención Maven), 550 pruebas:
 
-- **Unitarias y de controladores (522):** fuentes de datos y decoradores, transiciones de estado, las tres
+- **Unitarias y de controladores (530):** fuentes de datos y decoradores, transiciones de estado, las tres
   estrategias, la fachada con mocks, observadores, ciclo de vida de alertas y `@WebMvcTest` que verifica seguridad por
   rol, validación y errores 404, el agente (claves, límite de reportes, equipos nuevos y con MAC privada, canal
   recomendado, IA caída), el panel del equipo con datos reales, las sesiones (rotación, copia detectada, cambio de
@@ -391,7 +400,8 @@ No hay usuarios de demostración. Al arrancar se crea (o actualiza) el administr
   abandonada falla), qué impide capturar y los cuatro escenarios, el registro de un resultado (rechaza lo que no
   cuadra), las reglas de hallazgos, el análisis con la IA y sin ella (hechos aparte de inferencias, sin repetir lo que
   ya dice el backend), la auditoría (el aspecto, quién la escribe, los accesos denegados, la consulta y la retención),
-  el router, la lectura de la IA de las redes cercanas y el contrato con la IA de ambos análisis.
+  el router, la lectura de la IA de las redes cercanas y el contrato con la IA de ambos análisis. Desde el Avance 25, el
+  proxy de caché de la IA (`CachingAiClientTest`: qué se guarda y qué no, vigencia, fallas, límite y copias).
 - **De integración con PostgreSQL real (20, paquete `integration`):** el backend completo contra una base creada con
   las migraciones de WiFiSense-database, conectado como `wifisense_app`. Prueban por HTTP el registro, el inicio de
   sesión sin importar mayúsculas, la renovación, la copia de un refresh token, el cierre de sesión, el cambio de

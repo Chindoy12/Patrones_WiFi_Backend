@@ -15,7 +15,7 @@ implementaron también se explican al final, porque descartar un patrón inneces
 | 6 | Facade | Estructural | Una sola llamada para todo el análisis | `NetworkAnalysisFacadeTest` |
 | 7 | Adapter | Estructural | Usar la API REST de la IA y la de Brevo como interfaces Java | `HttpAiAnalysisClientTest`, `AiContractTest`, `BrevoEmailSenderTest` |
 | 8 | Template Method (2 usos) | Comportamiento | Que ninguna fuente nueva se salte la validación; registrar los equipos de Mi Wi-Fi y del sensor con un solo algoritmo | `DataSourceCreatorTemplateTest`, `DeviceRegistryTest` |
-| 9 | Proxy (Circuit Breaker) | Estructural + resiliencia | Que la IA caída no deje esperando 10 s cada llamada | `CircuitBreakerAiClientTest` |
+| 9 | Proxy (2 usos: protección con Circuit Breaker y caché) | Estructural + resiliencia | Que la IA caída no deje esperando 10 s cada llamada, y no volver a preguntarle a la IA lo que ya respondió con los mismos datos | `CircuitBreakerAiClientTest`, `CachingAiClientTest`, `AiWiringIntegrationTest` |
 
 En los otros repositorios: **Null Object**, Strategy y Pipeline en la IA
 ([WiFiSense-ai/docs/patrones.md](https://github.com/davidcampino06/Patrones_WiFi_-Artificial_Intelligence/blob/main/docs/patrones.md))
@@ -26,7 +26,8 @@ y **Error Boundary**, Provider, Custom Hook y Single-flight en la página
 Controller / MonitoringJob / SensorReportService ──► NetworkAnalysisFacade (Facade)
                    │
                    ├── AnalysisStrategy (Strategy) ── AnomalyDetectionStrategy ── AiAnalysisClient
-                   │                                                    └── CircuitBreakerAiClient (Proxy) ──► HttpAiAnalysisClient (Adapter) ──► WiFiSense-ai
+                   │                                                    └── CachingAiClient (Proxy de caché)
+                   │                                                          └── CircuitBreakerAiClient (Proxy de protección) ──► HttpAiAnalysisClient (Adapter) ──► WiFiSense-ai
                    ├── MeasurementCollectionService
                    │        └── NetworkDataSourceProvider ── DataSourceCreator (Factory Method + Template Method)
                    │                                              └── Metrics → Logging → Validation → fuente concreta (Decorator)
@@ -47,6 +48,11 @@ classDiagram
         +channelRecommend(request) JsonNode
         +trainModel(request) JsonNode
     }
+    class CachingAiClient {
+        -Duration ttl
+        -Answers quality, security, channel, nearby
+        +stats() CacheStats
+    }
     class CircuitBreakerAiClient {
         -State state
         -int failuresInARow
@@ -55,9 +61,11 @@ classDiagram
     class HttpAiAnalysisClient {
         -RestClient restClient
     }
-    AiAnalysisClient <|.. CircuitBreakerAiClient : Proxy
+    AiAnalysisClient <|.. CachingAiClient : Proxy de caché
+    AiAnalysisClient <|.. CircuitBreakerAiClient : Proxy de protección
     AiAnalysisClient <|.. HttpAiAnalysisClient : Adapter
-    CircuitBreakerAiClient --> HttpAiAnalysisClient : delega
+    CachingAiClient --> CircuitBreakerAiClient : delega si no tiene la respuesta
+    CircuitBreakerAiClient --> HttpAiAnalysisClient : delega si el circuito lo permite
 
     class AnalysisStrategy {
         <<interface>>
@@ -392,7 +400,30 @@ autorizado que sigue conectado se cuenta, y los equipos se guardan antes de sus 
 
 ---
 
-## 9. Proxy (con Circuit Breaker)
+## 9. Proxy (dos usos: protección con Circuit Breaker y caché)
+
+**Qué es.** Proxy es un patrón **estructural** (Gamma y otros, *Design Patterns*): un objeto intermediario con la
+**misma interfaz** que el objeto real, que se pone entre el cliente y ese objeto para **controlar el acceso** a él. El
+cliente no sabe si habla con el real o con el proxy. Participantes: *Subject* (la interfaz común), *RealSubject* (el
+objeto que hace el trabajo) y *Proxy* (guarda una referencia al real y decide cuándo y cómo llegar a él). Variantes
+según para qué controla el acceso:
+
+| Variante | Qué controla | En WiFiSense |
+|---|---|---|
+| Protección | **Si** se llega al objeto real (permisos, disponibilidad) | `CircuitBreakerAiClient` (primer uso, abajo) |
+| Caché | **Cuántas veces** se llega: reutiliza respuestas ya obtenidas | `CachingAiClient` (segundo uso, abajo) |
+| Virtual (carga diferida) | **Cuándo** se crea el objeto real: solo al necesitarlo | Lo hace el framework: `React.lazy` en la página (cada página se descarga al abrirla), las relaciones `LAZY` de Hibernate |
+| Remoto | **Dónde** está el objeto real: otro proceso o servidor | `HttpAiAnalysisClient` cumple ese papel para la IA en Python, aunque aquí se documenta como Adapter porque su trabajo principal es traducir la API REST |
+
+Spring también usa proxies por dentro: `@Transactional` y el aspecto de auditoría (`SensitiveOperationAudit`) funcionan
+porque Spring inyecta un proxy del servicio que abre la transacción o registra la traza antes de llamar al real.
+
+**Ventajas** (por las que se usa aquí): control de acceso sin tocar al cliente ni al objeto real; respuestas
+reutilizadas (caché); la interfaz común permite encadenar proxies. **Desventajas** (y cómo se acotan): una capa más que
+entender (cada proxy hace una sola cosa y está documentado aquí); una llamada más por pedido (es una búsqueda en
+memoria, frente a una llamada de red de hasta 10 s); exige diseñar bien la interfaz (ya existía: `AiAnalysisClient`).
+
+### Primer uso: Proxy de protección con Circuit Breaker (`CircuitBreakerAiClient`, Avance 18)
 
 **Problem.** Cuando la IA no responde (Railway la redespliega o está arrancando) cada llamada espera el tiempo máximo
 de 10 s. Un reporte del sensor pide a la IA hasta cuatro veredictos: podía tardar hasta 40 s, el agente (que espera
@@ -400,7 +431,7 @@ de 10 s. Un reporte del sensor pide a la IA hasta cuatro veredictos: podía tard
 dentro de una transacción.
 
 **Solution.** `CircuitBreakerAiClient` es un **proxy de protección**: implementa la misma interfaz `AiAnalysisClient`,
-es el que Spring inyecta (`@Primary`) y controla el acceso al objeto real (`HttpAiAnalysisClient`) con el patrón
+está detrás del proxy de caché (que es el que Spring inyecta, `@Primary`) y controla el acceso al objeto real (`HttpAiAnalysisClient`) con el patrón
 **Circuit Breaker** (Microsoft, *Cloud Design Patterns*):
 
 | Estado | Qué hace |
@@ -429,6 +460,56 @@ prueba encuentra la IA de nuevo y el circuito se cierra (`CircuitBreakerAiClient
 (validar, medir). Este objeto no cambia ninguna respuesta: decide **si** se llega al objeto real, que es la
 intención del Proxy de protección.
 
+### Segundo uso: Proxy de caché (`CachingAiClient`, Avance 25)
+
+**Problem.** Varias respuestas de la IA dependen solo de los datos que se le envían, porque las calcula con reglas
+fijas (sin modelo, sin reloj, sin modelo de lenguaje): la calificación de una conexión, la auditoría de seguridad de
+una red, el canal recomendado y la lectura de un escaneo. Aun así se preguntaban una y otra vez con los mismos datos:
+cada integrante del equipo que abre el tablero de una red hace calificar otra vez su última medición (llega una nueva
+cada 5 minutos); cada reporte de un agente pide la auditoría y el canal de una red que casi nunca cambió desde el
+reporte anterior; y un escaneo completado no cambia nunca, pero «Analizar con IA» lo mandaba a la IA en cada clic.
+Cada una de esas llamadas cruza la red hasta Railway y tarda segundos si la IA está fría.
+
+**Solution.** `CachingAiClient` es un **proxy de caché**: implementa `AiAnalysisClient`, es el que Spring inyecta
+(`@Primary`) a todos los servicios y delega en el proxy de protección solo cuando no tiene una respuesta vigente. La
+cadena queda: servicio → `CachingAiClient` → `CircuitBreakerAiClient` → `HttpAiAnalysisClient` → IA. Ningún servicio
+cambió.
+
+| Pregunta | ¿Se guarda? | Por qué |
+|---|---|---|
+| `qualityScore`, `securityAssess`, `channelRecommend`, `nearbyAnalyze` | Sí, 10 min (`wifisense.ai.cache.ttl`), la clave es la solicitud (`record`, se compara por valor) | Mismos datos → misma respuesta. Los 10 min acotan cuánto puede durar una respuesta si se despliega una versión nueva de las reglas |
+| `detectAnomalies` | No | Mediciones nuevas cada vez, y la respuesta depende del modelo en uso |
+| `modelInfo`, `modelEvaluation` | No | Cambian al reentrenar o al redesplegar la IA, y `AiTrainingService` lee el modelo en uso cada 10 min para restaurarlo; una respuesta guardada retrasaría esa restauración |
+| `trafficAnalyze` | No | Se pide una vez por captura y el backend guarda el resultado |
+| `trainModel` | No | Es una orden, no una pregunta |
+| `isHealthy` | No | El panel de estado tiene que mostrar la verdad |
+
+Reglas: una falla nunca se guarda (la siguiente llamada vuelve a preguntar); cada tipo de pregunta guarda como mucho
+500 respuestas (`wifisense.ai.cache.max-entries`) y sale primero la usada hace más tiempo (`LinkedHashMap` en orden de
+acceso); el proxy guarda su propia copia de cada respuesta y entrega copias, para que un servicio que modifique el JSON
+no cambie lo guardado. La clave es solo la solicitud y en ella no viaja nada de la persona, así que dos personas que
+envían los mismos datos reciben la respuesta que cada una recibiría de la IA de todos modos: no se cruza información
+entre cuentas.
+
+**Classes.** Subject: `AiAnalysisClient` · Proxy: `CachingAiClient` · Real subject (visto desde este proxy):
+`CircuitBreakerAiClient`, que a su vez es el proxy de protección de `HttpAiAnalysisClient`.
+
+**Where.** `com.wifisense.analysis.CachingAiClient`; configuración en `application.yml` (`wifisense.ai.cache`).
+
+**Benefit.** Una pregunta repetida se responde desde memoria en microsegundos en vez de una llamada de red; la IA
+recibe menos solicitudes; y si la IA está caída, lo que ya se había respondido sigue disponible durante los 10 min.
+
+**Ejemplo de ejecución** (`CachingAiClientTest`). Dos personas abren el tablero de la misma red: la primera calificación
+va a la IA y la segunda sale de memoria (`stats()` = 1 respuesta desde memoria, 1 preguntada). Con otra medición la
+solicitud es distinta y va a la IA. A los 11 minutos la respuesta ya no está vigente y se vuelve a preguntar. Si la IA
+falla, no se guarda nada y la siguiente llamada pregunta otra vez. En la aplicación, el `AiAnalysisClient` que recibe
+cada servicio es `CachingAiClient` y detrás está el `CircuitBreakerAiClient` (`AiWiringIntegrationTest`).
+
+**Por qué es Proxy y no Decorator.** No agrega nada a la respuesta: devuelve exactamente la que daría la IA. Lo que
+controla es **si hace falta** llegar al objeto real, que es la intención del Proxy de caché. Y por qué un objeto aparte
+y no `@Cacheable` de Spring: hacía falta decidir pregunta por pregunta qué se guarda (tabla de arriba), copiar los JSON
+y no guardar fallas; con la clase el comportamiento queda explícito y probado sin levantar Spring.
+
 ---
 
 ## Patrones analizados y no implementados
@@ -441,7 +522,7 @@ Patterns* de Microsoft (Circuit Breaker, Bulkhead, Retry) y la documentación de
 | Patrón | Decisión | Motivo |
 |---|---|---|
 | Builder | No | Los objetos con muchos campos son `record` inmutables o entidades con fábricas estáticas (`Measurement.from`). Un builder añadiría clases sin resolver nada. |
-| Proxy de caché | No | Cada análisis usa datos nuevos; la descripción del modelo se pide pocas veces. El Proxy que sí se usa es el de protección (sección 9). |
+| Proxy de caché | Sí, desde el Avance 25 (sección 9) | En el Avance 18 se descartó porque cada análisis usaba datos nuevos. Desde entonces aparecieron preguntas que se repiten con los mismos datos (tablero del equipo con varias personas, auditoría y canal en cada reporte de un agente, lectura de un escaneo). La descripción del modelo sigue sin guardarse: se pide pocas veces y cambia al redesplegar la IA. |
 | Command | No | Las acciones (reconocer o resolver alerta) son métodos de dominio simples; no hay deshacer ni cola de comandos. |
 | Composite | No | Ubicación → zona → red es una jerarquía fija de tres niveles modelada con relaciones; no se necesita tratar hojas y grupos de forma uniforme. |
 | Singleton | No (lo hace Spring) | Cada servicio ya es un único objeto administrado por Spring; un Singleton escrito a mano impediría reemplazarlo en las pruebas. |

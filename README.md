@@ -411,9 +411,9 @@ No hay usuarios de demostración. Al arrancar se crea (o actualiza) el administr
 
 ## Pruebas
 
-`src/test/java` (convención Maven), 550 pruebas:
+`src/test/java` (convención Maven), 589 pruebas:
 
-- **Unitarias y de controladores (530):** fuentes de datos y decoradores, transiciones de estado, las tres
+- **Unitarias y de controladores (569):** fuentes de datos y decoradores, transiciones de estado, las tres
   estrategias, la fachada con mocks, observadores, ciclo de vida de alertas y `@WebMvcTest` que verifica seguridad por
   rol, validación y errores 404, el agente (claves, límite de reportes, equipos nuevos y con MAC privada, canal
   recomendado, IA caída), el panel del equipo con datos reales, las sesiones (rotación, copia detectada, cambio de
@@ -430,7 +430,11 @@ No hay usuarios de demostración. Al arrancar se crea (o actualiza) el administr
   cuadra), las reglas de hallazgos, el análisis con la IA y sin ella (hechos aparte de inferencias, sin repetir lo que
   ya dice el backend), la auditoría (el aspecto, quién la escribe, los accesos denegados, la consulta y la retención),
   el router, la lectura de la IA de las redes cercanas y el contrato con la IA de ambos análisis. Desde el Avance 25, el
-  proxy de caché de la IA (`CachingAiClientTest`: qué se guarda y qué no, vigencia, fallas, límite y copias).
+  proxy de caché de la IA (`CachingAiClientTest`: qué se guarda y qué no, vigencia, fallas, límite y copias). Desde
+  el Avance 26, «En vivo»: quién mira y cuándo se detiene el agente, estados, límites y ventana de 5 minutos
+  (`LiveMonitorTest`), qué significa el último minuto (`LiveSummaryTest`), la clave decide la red y la propiedad de
+  las redes (`LiveServiceTest`) y los endpoints de la página y del agente (`LiveControllerTest`,
+  `AgentLiveControllerTest`).
 - **De integración con PostgreSQL real (20, paquete `integration`):** el backend completo contra una base creada con
   las migraciones de WiFiSense-database, conectado como `wifisense_app`. Prueban por HTTP el registro, el inicio de
   sesión sin importar mayúsculas, la renovación, la copia de un refresh token, el cierre de sesión, el cambio de

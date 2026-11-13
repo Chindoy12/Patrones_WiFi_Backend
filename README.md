@@ -164,6 +164,35 @@ Contrato completo de cada endpoint (rol, validaciones, respuestas y estados) en
   (`identification`: de `ALIAS`, el nombre que le puso la persona, a `UNKNOWN`); una estimación por el fabricante nunca
   se presenta como el nombre.
 
+## En vivo (Avance 26)
+
+«En vivo» muestra cada 2 segundos lo que el computador del agente (Mi Wi-Fi) o del sensor (red del equipo) **está
+usando en ese momento**: bajada y subida (de los contadores de su tarjeta de red, sin gastar datos de prueba), latencia
+hasta el router y hasta internet, pérdida y señal. Es el uso de ese momento, no la capacidad de la conexión (eso lo
+mide «Probar mi conexión»), y solo del computador del agente.
+
+| Método | Ruta | Quién |
+|---|---|---|
+| GET | `/api/my/networks/{id}/live?after=N` | el dueño de la red de Mi Wi-Fi (otra red: 404) |
+| GET | `/api/networks/{id}/sensor/live?after=N` | equipo (una red sin sensor: 409) |
+| GET | `/api/agent/live/next` | el agente, con `X-Agent-Key`: `200 {"live":true,"sampleSeconds":2,"maxSeconds":600}` o 204 |
+| POST | `/api/agent/live/samples` | el agente, con `X-Agent-Key`: una muestra; responde `{"keepGoing":true\|false}` |
+
+- **Cómo arranca y cómo se detiene:** la página pregunta cada 2 s mientras «En vivo» está abierto, y cada pregunta deja
+  la red «mirada» 30 s más. El agente (2.1.0) pregunta cada 30 s entre reportes si alguien mira; si es así, mide en un
+  hilo aparte (los reportes de 5 minutos siguen igual) y deja de medir cuando la respuesta dice `keepGoing: false`. La
+  página se pausa sola a los 10 minutos y no pregunta con la pestaña oculta.
+- **Estados:** `LIVE` (llegó una muestra hace menos de 8 s), `WAITING` (el agente fue avisado) y `NO_AGENT` (en 45 s
+  el agente no preguntó, o en 90 s no llegó ninguna muestra: computador apagado, sin internet o agente anterior a 2.1.0).
+- **Qué significa** (`LiveSummary`): promedio y pico del último minuto, mediana de la latencia, jitter y pérdida, con
+  los mismos umbrales con que la IA califica una conexión (videollamada: latencia < 150 ms, jitter < 30 ms, pérdida
+  < 2 %). La latencia al router dice dónde empieza la demora: lenta hasta el router es el Wi-Fi de ese computador;
+  rápida hasta el router y lenta hasta internet es el proveedor o los datos móviles del celular que comparte internet.
+- **Solo en memoria** (`LiveMonitor`): los últimos 5 minutos por red, sin tabla nueva ni migración. Muestras a menos
+  de 0,8 s se descartan, como mucho 2000 redes a la vez, y una red que nadie mira hace 5 minutos se olvida. Railway
+  corre una sola instancia; tras un nuevo despliegue «En vivo» simplemente empieza de nuevo.
+- **Privacidad:** solo números del propio computador; ni direcciones, ni MAC, ni sitios, ni contenido.
+
 ## Seguridad
 
 - **Dos tipos de cuenta.** El **equipo** (ADMIN, ANALYST, VIEWER) lo crea solo el administrador, con un máximo de 3
@@ -382,9 +411,9 @@ No hay usuarios de demostración. Al arrancar se crea (o actualiza) el administr
 
 ## Pruebas
 
-`src/test/java` (convención Maven), 550 pruebas:
+`src/test/java` (convención Maven), 589 pruebas:
 
-- **Unitarias y de controladores (530):** fuentes de datos y decoradores, transiciones de estado, las tres
+- **Unitarias y de controladores (569):** fuentes de datos y decoradores, transiciones de estado, las tres
   estrategias, la fachada con mocks, observadores, ciclo de vida de alertas y `@WebMvcTest` que verifica seguridad por
   rol, validación y errores 404, el agente (claves, límite de reportes, equipos nuevos y con MAC privada, canal
   recomendado, IA caída), el panel del equipo con datos reales, las sesiones (rotación, copia detectada, cambio de
@@ -401,7 +430,11 @@ No hay usuarios de demostración. Al arrancar se crea (o actualiza) el administr
   cuadra), las reglas de hallazgos, el análisis con la IA y sin ella (hechos aparte de inferencias, sin repetir lo que
   ya dice el backend), la auditoría (el aspecto, quién la escribe, los accesos denegados, la consulta y la retención),
   el router, la lectura de la IA de las redes cercanas y el contrato con la IA de ambos análisis. Desde el Avance 25, el
-  proxy de caché de la IA (`CachingAiClientTest`: qué se guarda y qué no, vigencia, fallas, límite y copias).
+  proxy de caché de la IA (`CachingAiClientTest`: qué se guarda y qué no, vigencia, fallas, límite y copias). Desde
+  el Avance 26, «En vivo»: quién mira y cuándo se detiene el agente, estados, límites y ventana de 5 minutos
+  (`LiveMonitorTest`), qué significa el último minuto (`LiveSummaryTest`), la clave decide la red y la propiedad de
+  las redes (`LiveServiceTest`) y los endpoints de la página y del agente (`LiveControllerTest`,
+  `AgentLiveControllerTest`).
 - **De integración con PostgreSQL real (20, paquete `integration`):** el backend completo contra una base creada con
   las migraciones de WiFiSense-database, conectado como `wifisense_app`. Prueban por HTTP el registro, el inicio de
   sesión sin importar mayúsculas, la renovación, la copia de un refresh token, el cierre de sesión, el cambio de

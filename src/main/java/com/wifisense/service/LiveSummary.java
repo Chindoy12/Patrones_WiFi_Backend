@@ -73,6 +73,28 @@ public final class LiveSummary {
             notes.add(new Note("WARN", "La latencia hacia internet está subiendo (" + whole(internetMs) + " ms): "
                     + "sirve para navegar, pero un juego en línea ya se nota lento."));
         }
+        if (jitterMs != null && jitterMs >= JITTER_WARN) {
+            notes.add(new Note("WARN", "La latencia cambia mucho de un momento a otro (jitter de " + whole(jitterMs)
+                    + " ms): el audio de una llamada puede entrecortarse."));
+        }
+        boolean slowToInternet = internetMs != null && internetMs >= LATENCY_WARN
+                || lossPct != null && lossPct >= LOSS_WARN;
+        if (gatewayMs != null && gatewayMs >= ROUTER_SLOW) {
+            notes.add(new Note("WARN", "El retraso empieza antes del router: llegar hasta él ya toma "
+                    + whole(gatewayMs) + " ms. Acércate al router (o al celular que comparte internet) o "
+                    + "quita obstáculos entre los dos."));
+        } else if (gatewayLossPct != null && gatewayLossPct >= LOSS_BAD) {
+            notes.add(new Note("WARN", "El router no respondió el " + whole(gatewayLossPct) + " % de las veces: "
+                    + "el Wi-Fi de este computador se está cortando. Acércate al router (o al celular que comparte "
+                    + "internet)."));
+        } else if (slowToInternet && gatewayMs != null && gatewayMs < ROUTER_FAST) {
+            notes.add(new Note("WARN", "El router responde rápido (" + whole(gatewayMs) + " ms): la demora está "
+                    + "después de él, en el internet del proveedor o en los datos móviles del celular."));
+        }
+        if (signal != null && signal < SIGNAL_WEAK) {
+            notes.add(new Note("WARN", "La señal Wi-Fi llega débil (" + signal + " %): acércate al router o "
+                    + "cámbiate a la banda de 2,4 GHz, que llega más lejos."));
+        }
         if (notes.isEmpty() && internetMs != null) {
             notes.add(new Note("OK", "Todo bien en este momento: " + whole(internetMs) + " ms hasta internet"
                     + (lossPct == null || lossPct == 0 ? " y sin pérdidas." : " y casi sin pérdidas.")));

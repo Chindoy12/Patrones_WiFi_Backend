@@ -49,10 +49,35 @@ public final class LiveSummary {
         Double gatewayMs = median(gateway);
         Double gatewayLossPct = gatewayProbed == 0 ? null : 100.0 * gatewayLost / gatewayProbed;
 
-        List<Note> notes = List.of();  // what the numbers mean comes next
+        List<Note> notes = points.size() < MIN_SAMPLES ? List.of()
+                : notes(internetMs, jitterMs, lossPct, gatewayMs, gatewayLossPct, signal);
         return new Summary(points.size(), round(mean(down), 2), round(mean(up), 2), round(max(down), 2),
                 round(max(up), 2), round(internetMs, 1), round(jitterMs, 1), lossPct, round(gatewayMs, 1), signal,
                 notes);
+    }
+
+    static List<Note> notes(Double internetMs, Double jitterMs, Double lossPct, Double gatewayMs,
+                            Double gatewayLossPct, Integer signal) {
+        List<Note> notes = new ArrayList<>();
+        if (lossPct != null && lossPct >= LOSS_BAD) {
+            notes.add(new Note("BAD", "Se está perdiendo el " + whole(lossPct) + " % de las respuestas de internet: "
+                    + "las videollamadas y los juegos se van a cortar."));
+        } else if (lossPct != null && lossPct >= LOSS_WARN) {
+            notes.add(new Note("WARN", "Se pierde el " + whole(lossPct) + " % de las respuestas de internet: una "
+                    + "videollamada puede congelarse a ratos."));
+        }
+        if (internetMs != null && internetMs >= LATENCY_BAD) {
+            notes.add(new Note("BAD", "La latencia hacia internet es alta (" + whole(internetMs) + " ms): las "
+                    + "videollamadas y los juegos van a sentirse con retraso."));
+        } else if (internetMs != null && internetMs >= LATENCY_WARN) {
+            notes.add(new Note("WARN", "La latencia hacia internet está subiendo (" + whole(internetMs) + " ms): "
+                    + "sirve para navegar, pero un juego en línea ya se nota lento."));
+        }
+        if (notes.isEmpty() && internetMs != null) {
+            notes.add(new Note("OK", "Todo bien en este momento: " + whole(internetMs) + " ms hasta internet"
+                    + (lossPct == null || lossPct == 0 ? " y sin pérdidas." : " y casi sin pérdidas.")));
+        }
+        return notes;
     }
 
     /** Mean change between consecutive answers of internet (a lost sample breaks the pair). */

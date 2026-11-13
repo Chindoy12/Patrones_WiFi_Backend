@@ -164,6 +164,35 @@ Contrato completo de cada endpoint (rol, validaciones, respuestas y estados) en
   (`identification`: de `ALIAS`, el nombre que le puso la persona, a `UNKNOWN`); una estimación por el fabricante nunca
   se presenta como el nombre.
 
+## En vivo (Avance 26)
+
+«En vivo» muestra cada 2 segundos lo que el computador del agente (Mi Wi-Fi) o del sensor (red del equipo) **está
+usando en ese momento**: bajada y subida (de los contadores de su tarjeta de red, sin gastar datos de prueba), latencia
+hasta el router y hasta internet, pérdida y señal. Es el uso de ese momento, no la capacidad de la conexión (eso lo
+mide «Probar mi conexión»), y solo del computador del agente.
+
+| Método | Ruta | Quién |
+|---|---|---|
+| GET | `/api/my/networks/{id}/live?after=N` | el dueño de la red de Mi Wi-Fi (otra red: 404) |
+| GET | `/api/networks/{id}/sensor/live?after=N` | equipo (una red sin sensor: 409) |
+| GET | `/api/agent/live/next` | el agente, con `X-Agent-Key`: `200 {"live":true,"sampleSeconds":2,"maxSeconds":600}` o 204 |
+| POST | `/api/agent/live/samples` | el agente, con `X-Agent-Key`: una muestra; responde `{"keepGoing":true\|false}` |
+
+- **Cómo arranca y cómo se detiene:** la página pregunta cada 2 s mientras «En vivo» está abierto, y cada pregunta deja
+  la red «mirada» 30 s más. El agente (2.1.0) pregunta cada 30 s entre reportes si alguien mira; si es así, mide en un
+  hilo aparte (los reportes de 5 minutos siguen igual) y deja de medir cuando la respuesta dice `keepGoing: false`. La
+  página se pausa sola a los 10 minutos y no pregunta con la pestaña oculta.
+- **Estados:** `LIVE` (llegó una muestra hace menos de 8 s), `WAITING` (el agente fue avisado) y `NO_AGENT` (en 45 s
+  el agente no preguntó, o en 90 s no llegó ninguna muestra: computador apagado, sin internet o agente anterior a 2.1.0).
+- **Qué significa** (`LiveSummary`): promedio y pico del último minuto, mediana de la latencia, jitter y pérdida, con
+  los mismos umbrales con que la IA califica una conexión (videollamada: latencia < 150 ms, jitter < 30 ms, pérdida
+  < 2 %). La latencia al router dice dónde empieza la demora: lenta hasta el router es el Wi-Fi de ese computador;
+  rápida hasta el router y lenta hasta internet es el proveedor o los datos móviles del celular que comparte internet.
+- **Solo en memoria** (`LiveMonitor`): los últimos 5 minutos por red, sin tabla nueva ni migración. Muestras a menos
+  de 0,8 s se descartan, como mucho 2000 redes a la vez, y una red que nadie mira hace 5 minutos se olvida. Railway
+  corre una sola instancia; tras un nuevo despliegue «En vivo» simplemente empieza de nuevo.
+- **Privacidad:** solo números del propio computador; ni direcciones, ni MAC, ni sitios, ni contenido.
+
 ## Seguridad
 
 - **Dos tipos de cuenta.** El **equipo** (ADMIN, ANALYST, VIEWER) lo crea solo el administrador, con un máximo de 3

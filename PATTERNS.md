@@ -289,8 +289,8 @@ terminan y `FAILED` cuando lanzan una excepción, sin que los servicios sepan qu
 con la auditoría desde el principio, la registran directamente (`TrafficCaptureService`), y los accesos denegados los
 avisa `StaffOnlyAccessDeniedHandler`.
 
-**Ejemplo de ejecución.** Un administrador cambia el rol de Eva a VIEWER: `UserService.changeRole` termina, el aspecto
-recibe el `UserResponse` y escribe «Cambió el rol de una cuenta — Cuenta Eva: nuevo rol VIEWER» con el administrador de
+**Ejemplo de ejecución.** Un administrador cambia el rol de Eva a ANALYST: `UserService.changeRole` termina, el aspecto
+recibe el `UserResponse` y escribe «Cambió el rol de una cuenta — Cuenta Eva: nuevo rol ANALYST» con el administrador de
 la sesión como autor (`SensitiveOperationAuditTest`). Nunca se escribe una contraseña, una clave, un código, una MAC ni
 el nombre del equipo de un usuario final.
 

@@ -66,7 +66,8 @@ class TeamNetworkControllerTest {
     }
 
     @Test
-    void aViewerOrAnEndUserCannotSeeOtherPeoplesNetworks() throws Exception {
+    void anEndUserCannotSeeOtherPeoplesNetworks() throws Exception {
+        // a token of the read-only role removed in Avance 33 does not open them either
         mvc.perform(get("/api/home-networks").with(as("VIEWER"))).andExpect(status().isForbidden());
         // an end user does not even learn that the team endpoint exists (same as the rest of the team API)
         mvc.perform(get("/api/home-networks").with(as("USER"))).andExpect(status().isNotFound());

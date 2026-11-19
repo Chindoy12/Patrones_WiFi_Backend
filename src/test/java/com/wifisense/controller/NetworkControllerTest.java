@@ -68,19 +68,19 @@ class NetworkControllerTest {
     }
 
     @Test
-    void viewerCanListNetworks() throws Exception {
+    void analystCanListNetworks() throws Exception {
         when(networkService.list(null)).thenReturn(List.of(new NetworkResponse(1L, "Lab", "A4:2B:B0:10:00:09",
                 "5GHz", 36, Network.SecurityType.WPA3, NetworkStatus.NORMAL, DataSourceType.SIMULATION, 1L,
                 "Library", "Main Campus", null)));
 
-        mvc.perform(get("/api/networks").with(as("VIEWER")))
+        mvc.perform(get("/api/networks").with(as("ANALYST")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].ssid").value("Lab"));
     }
 
     @Test
-    void viewerCannotCreateNetworks() throws Exception {
-        mvc.perform(post("/api/networks").with(as("VIEWER"))
+    void analystCannotCreateNetworks() throws Exception {
+        mvc.perform(post("/api/networks").with(as("ANALYST"))
                         .contentType(MediaType.APPLICATION_JSON).content(VALID_NETWORK))
                 .andExpect(status().isForbidden());
     }
@@ -98,18 +98,15 @@ class NetworkControllerTest {
     void unknownNetworkReturns404() throws Exception {
         when(networkService.get(99L)).thenThrow(new ResourceNotFoundException("la red", 99L));
 
-        mvc.perform(get("/api/networks/99").with(as("VIEWER")))
+        mvc.perform(get("/api/networks/99").with(as("ANALYST")))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.detail").value("No se encontró la red con id 99"));
     }
 
     @Test
-    void analystCanRunAnalysisButViewerCannot() throws Exception {
+    void analystCanRunAnalysis() throws Exception {
         String body = "{\"type\":\"THRESHOLD\"}";
 
-        mvc.perform(post("/api/networks/1/analyses").with(as("VIEWER"))
-                        .contentType(MediaType.APPLICATION_JSON).content(body))
-                .andExpect(status().isForbidden());
         mvc.perform(post("/api/networks/1/analyses").with(as("ANALYST"))
                         .contentType(MediaType.APPLICATION_JSON).content(body))
                 .andExpect(status().isCreated());
@@ -131,6 +128,15 @@ class NetworkControllerTest {
 
     @Test
     void teamMembersStillGetAnHonestForbidden() throws Exception {
+        mvc.perform(post("/api/networks").with(as("ANALYST"))
+                        .contentType(MediaType.APPLICATION_JSON).content(VALID_NETWORK))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void aTokenWithTheRemovedViewerRoleOpensNothing() throws Exception {
+        // Avance 33: the read-only role no longer exists; a token issued before reads nothing and changes nothing.
+        mvc.perform(get("/api/networks").with(as("VIEWER"))).andExpect(status().isForbidden());
         mvc.perform(post("/api/networks/1/analyses").with(as("VIEWER"))
                         .contentType(MediaType.APPLICATION_JSON).content("{\"type\":\"THRESHOLD\"}"))
                 .andExpect(status().isForbidden());

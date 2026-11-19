@@ -16,7 +16,7 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * Team accounts (ADMIN, ANALYST, VIEWER) are created by an administrator, up to a fixed maximum.
+ * Team accounts (ADMIN, ANALYST) are created by an administrator, up to a fixed maximum.
  * End users register themselves and always get the USER role.
  */
 @Service

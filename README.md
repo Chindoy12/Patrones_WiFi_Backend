@@ -49,7 +49,7 @@ ejecución, el diagrama de clases y los patrones que se investigaron y descartar
 ## API
 
 Todas las rutas `/api/**` requieren `Authorization: Bearer <token>` salvo las de inicio de sesión, registro, renovación
-y cierre de sesión. «equipo» = ADMIN, ANALYST o VIEWER. Para un usuario final (`USER`) las rutas del equipo responden **404**, igual que una ruta inexistente.
+y cierre de sesión. «equipo» = ADMIN o ANALYST (el rol de solo lectura VIEWER se quitó en el Avance 33). Para un usuario final (`USER`) las rutas del equipo responden **404**, igual que una ruta inexistente.
 
 | Método | Ruta | Rol |
 |---|---|---|
@@ -134,7 +134,7 @@ guardan los 200 de mejor señal.
 
 **Propiedad de los datos:** todo cuelga de la red de Mi Wi-Fi; las rutas de usuario comprueban que la red sea del que
 pregunta (si no, 404 como una red inexistente) y las del agente toman la red de su clave, nunca del cuerpo. El equipo
-(ADMIN, ANALYST, VIEWER) no ve estas redes.
+(ADMIN, ANALYST) no ve estas redes.
 
 **Programación y límites** (`wifisense.scan.*` en `application.yml`): el servidor pide un escaneo con el reporte cuando
 el último tiene más de 60 min; «Escanear ahora» como mucho cada 30 s; un escaneo que el agente no termina en 3 min
@@ -163,6 +163,20 @@ Contrato completo de cada endpoint (rol, validaciones, respuestas y estados) en
 - **Nombres de los equipos:** cada equipo dice de dónde salió su nombre (`nameSource`) y qué tan identificado está
   (`identification`: de `ALIAS`, el nombre que le puso la persona, a `UNKNOWN`); una estimación por el fabricante nunca
   se presenta como el nombre.
+
+## Dos roles en el equipo (Avance 33)
+
+El equipo queda con dos roles, cada uno con su trabajo; la página les muestra un panel distinto:
+
+| Rol | Qué hace |
+|---|---|
+| `ADMIN` | Gestiona la sede: cuentas del equipo, redes y sensores, capturas técnicas, auditoría y entrenamiento de la IA. También puede todo lo del analista |
+| `ANALYST` | Vigila y analiza: lanza análisis y recolecciones, revisa anomalías, reconoce y resuelve alertas y ve las redes reales de los usuarios (sin sus equipos) |
+
+El rol de solo lectura `VIEWER` se quitó: ya no se puede asignar (400) y un token emitido con él no abre ninguna ruta
+(403). **Orden al publicar:** primero se borra o cambia de rol cualquier cuenta VIEWER, luego se aplica
+`V48__remove_viewer_role.sql` de WiFiSense-database (se detiene si aún queda alguna) y después se despliega este
+backend; si el backend nuevo leyera una cuenta VIEWER no sabría qué rol es.
 
 ## En vivo (Avance 26)
 
@@ -195,7 +209,7 @@ mide «Probar mi conexión»), y solo del computador del agente.
 
 ## Seguridad
 
-- **Dos tipos de cuenta.** El **equipo** (ADMIN, ANALYST, VIEWER) lo crea solo el administrador, con un máximo de 3
+- **Dos tipos de cuenta.** El **equipo** (ADMIN y ANALYST) lo crea solo el administrador, con un máximo de 3
   (`wifisense.accounts.max-users`). Los **usuarios finales** (`USER`) se registran solos en `/api/auth/register`; no
   cuentan en ese límite y no pueden elegir su rol. Nombres como `admin` o `soporte` están reservados.
 - **Funciones del equipo ocultas.** Para un usuario final, cualquier ruta del equipo responde 404 con el mismo cuerpo que
@@ -252,7 +266,7 @@ mide «Probar mi conexión»), y solo del computador del agente.
 - **Sesiones que se cierran.** Al restablecer o cambiar la contraseña se guarda `password_changed_at` (V20), se
   revocan todos los refresh tokens de la cuenta y `SessionTokenValidator` rechaza los JWT emitidos antes; también los
   de cuentas borradas o desactivadas, y los que llevan un **rol distinto al actual** (un administrador que baja a
-  VIEWER deja de serlo en la siguiente petición, no cuando vence su token). Cerrar sesión revoca el refresh token.
+  ANALYST deja de serlo en la siguiente petición, no cuando vence su token). Cerrar sesión revoca el refresh token.
 - **Instalar el agente con un código.** Mi Wi-Fi muestra un código de 8 caracteres (alfabeto sin 0/O ni 1/I/L,
   ≈10¹² combinaciones), válido 15 minutos y una sola vez, guardado como SHA-256 (V22). El instalador lo cambia por
   la clave del agente; cada dirección tiene 10 intentos cada 10 minutos.
@@ -411,9 +425,9 @@ No hay usuarios de demostración. Al arrancar se crea (o actualiza) el administr
 
 ## Pruebas
 
-`src/test/java` (convención Maven), 589 pruebas:
+`src/test/java` (convención Maven), 593 pruebas:
 
-- **Unitarias y de controladores (569):** fuentes de datos y decoradores, transiciones de estado, las tres
+- **Unitarias y de controladores (573):** fuentes de datos y decoradores, transiciones de estado, las tres
   estrategias, la fachada con mocks, observadores, ciclo de vida de alertas y `@WebMvcTest` que verifica seguridad por
   rol, validación y errores 404, el agente (claves, límite de reportes, equipos nuevos y con MAC privada, canal
   recomendado, IA caída), el panel del equipo con datos reales, las sesiones (rotación, copia detectada, cambio de

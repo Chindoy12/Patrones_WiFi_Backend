@@ -37,7 +37,7 @@ class UserServiceTest {
 
     @Test
     void rejectsWeakPasswordWithAllReasons() {
-        assertThatThrownBy(() -> service.create(new CreateUserRequest("jaider", "weak", User.Role.VIEWER)))
+        assertThatThrownBy(() -> service.create(new CreateUserRequest("jaider", "weak", User.Role.ANALYST)))
                 .isInstanceOfSatisfying(InvalidAccountException.class, e -> assertThat(e.getErrors()).hasSize(4));
         verify(users, never()).save(any());
     }
@@ -46,7 +46,7 @@ class UserServiceTest {
     void neverExceedsTheMaximumNumberOfUsers() {
         when(users.countByRoleIn(User.Role.STAFF)).thenReturn(3L);
 
-        assertThatThrownBy(() -> service.create(new CreateUserRequest("cuarto", "Redes#2026a", User.Role.VIEWER)))
+        assertThatThrownBy(() -> service.create(new CreateUserRequest("cuarto", "Redes#2026a", User.Role.ANALYST)))
                 .isInstanceOf(UserLimitException.class)
                 .hasMessageContaining("máximo de 3 usuarios");
     }
@@ -58,7 +58,7 @@ class UserServiceTest {
         when(users.findById(1L)).thenReturn(Optional.of(admin));
 
         assertThatThrownBy(() -> service.delete(1L, "admin")).isInstanceOf(IllegalStateException.class);
-        assertThatThrownBy(() -> service.changeRole(1L, User.Role.VIEWER, "admin")).isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(() -> service.changeRole(1L, User.Role.ANALYST, "admin")).isInstanceOf(IllegalStateException.class);
     }
 
     @Test

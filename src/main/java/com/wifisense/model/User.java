@@ -10,11 +10,14 @@ import java.time.Instant;
 @Table(name = "users")
 public class User {
 
-    /** ADMIN, ANALYST and VIEWER are the team; USER is a self-registered end user. */
+    /**
+     * ADMIN and ANALYST are the team; USER is a self-registered end user. Avance 33: the read-only VIEWER role was
+     * removed (V48 in WiFiSense-database refuses to apply while an account still has it).
+     */
     public enum Role {
-        ADMIN, ANALYST, VIEWER, USER;
+        ADMIN, ANALYST, USER;
 
-        public static final java.util.Set<Role> STAFF = java.util.EnumSet.of(ADMIN, ANALYST, VIEWER);
+        public static final java.util.Set<Role> STAFF = java.util.EnumSet.of(ADMIN, ANALYST);
 
         public boolean isStaff() {
             return STAFF.contains(this);

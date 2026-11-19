@@ -21,7 +21,7 @@ import java.util.List;
 
 /**
  * Technical captures of a team network, run by its sensor. Only an ADMIN can use any of these endpoints, reading
- * included (SecurityConfig); an analyst or a viewer gets 403 and the attempt is audited.
+ * included (SecurityConfig); an analyst gets 403 and the attempt is audited.
  */
 @RestController
 @RequestMapping("/api/networks/{networkId}/sensor/captures")

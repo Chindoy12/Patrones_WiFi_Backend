@@ -71,10 +71,10 @@ class LiveControllerTest {
     }
 
     @Test
-    void theTeamWatchesTheSensorOfANetworkEvenReadOnly() throws Exception {
+    void anAnalystWatchesTheSensorOfANetwork() throws Exception {
         when(live.watchTeam(7L, 0)).thenReturn(VIEW);
 
-        mvc.perform(get("/api/networks/7/sensor/live").with(as("lector", "VIEWER")))
+        mvc.perform(get("/api/networks/7/sensor/live").with(as("analista", "ANALYST")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.summary.internetMs").value(35.0));
     }

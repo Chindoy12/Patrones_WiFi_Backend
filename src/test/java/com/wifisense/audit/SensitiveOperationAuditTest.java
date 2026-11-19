@@ -55,7 +55,7 @@ class SensitiveOperationAuditTest {
         Signature signature = mock(Signature.class);
         when(point.getSignature()).thenReturn(signature);
         when(signature.getName()).thenReturn("changeRole");
-        when(point.getArgs()).thenReturn(new Object[]{12L, "VIEWER"});
+        when(point.getArgs()).thenReturn(new Object[]{12L, "ANALYST"});
 
         aspect.accountFailed(point, new IllegalArgumentException("No puedes cambiar tu propio rol."));
 

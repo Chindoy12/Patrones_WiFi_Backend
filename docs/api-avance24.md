@@ -54,7 +54,7 @@ no se pueden modificar y solo se borran las de más de 31 días (la base de dato
 | Método y ruta | Rol | Respuestas |
 |---|---|---|
 | `GET /api/my/networks/{id}/router` | USER dueño | **200** `RouterInfoResponse` · **404** |
-| `GET /api/networks/{id}/sensor/router` | ADMIN, ANALYST, VIEWER | **200** `RouterInfoResponse` · **404** |
+| `GET /api/networks/{id}/sensor/router` | ADMIN, ANALYST | **200** `RouterInfoResponse` · **404** |
 
 `RouterInfoResponse`: si el agente identificó el router (fabricante y modelo por UPnP), cuántos nombres respondió su DNS
 y las capacidades `READ_NAMES` (disponible si el DNS del router respondió), `LIST_CLIENTS`, `BLOCK_DEVICE` y

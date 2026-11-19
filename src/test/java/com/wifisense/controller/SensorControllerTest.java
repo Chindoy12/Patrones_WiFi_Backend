@@ -57,7 +57,7 @@ class SensorControllerTest {
                 Instant.parse("2026-10-16T10:00:00Z"), Instant.parse("2026-10-18T10:00:00Z"), "1.4.0", "Windows", null,
                 "Lab-Redes"));
 
-        mvc.perform(get("/api/networks/5/sensor").with(as("VIEWER")))
+        mvc.perform(get("/api/networks/5/sensor").with(as("ANALYST")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.online").value(true))
                 .andExpect(jsonPath("$.agentVersion").value("1.4.0"));
@@ -87,7 +87,7 @@ class SensorControllerTest {
 
     @Test
     void onlyAnAdminRemovesTheSensor() throws Exception {
-        mvc.perform(delete("/api/networks/5/sensor").with(as("VIEWER"))).andExpect(status().isForbidden());
+        mvc.perform(delete("/api/networks/5/sensor").with(as("ANALYST"))).andExpect(status().isForbidden());
         mvc.perform(delete("/api/networks/5/sensor").with(as("ADMIN"))).andExpect(status().isNoContent());
         verify(sensors).revoke(5L);
     }
@@ -106,7 +106,7 @@ class SensorControllerTest {
         when(overview.overview(5L)).thenReturn(new AgentOverview(new AgentOverview.KeyInfo("wsa_abcd", SEEN, SEEN),
                 true, null, List.of(), List.of(laptop), List.of()));
 
-        mvc.perform(get("/api/networks/5/sensor/overview").with(as("VIEWER")))
+        mvc.perform(get("/api/networks/5/sensor/overview").with(as("ANALYST")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.devices[0].vendor").value("Lenovo"))
                 .andExpect(jsonPath("$.devices[0].hostname").value("PC-Lab"));
@@ -137,7 +137,7 @@ class SensorControllerTest {
                 1, 55, List.of(new com.wifisense.dto.DeviceSessionHistory.Period(SEEN, SEEN.plusSeconds(3300), false,
                 55))));
 
-        mvc.perform(get("/api/networks/5/sensor/devices/" + fingerprint + "/sessions").with(as("VIEWER")))
+        mvc.perform(get("/api/networks/5/sensor/devices/" + fingerprint + "/sessions").with(as("ANALYST")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.totalMinutes").value(55))
                 .andExpect(jsonPath("$.periods[0].ongoing").value(false));
@@ -148,7 +148,7 @@ class SensorControllerTest {
         Instant until = Instant.parse("2026-10-19T15:10:00Z");
         when(sensors.identify(5L)).thenReturn(new com.wifisense.dto.IdentifyModeResponse(until, 60));
 
-        mvc.perform(post("/api/networks/5/sensor/identify").with(as("VIEWER"))).andExpect(status().isForbidden());
+        mvc.perform(post("/api/networks/5/sensor/identify").with(as("ANALYST"))).andExpect(status().isForbidden());
         mvc.perform(post("/api/networks/5/sensor/identify").with(as("ADMIN")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.reportSeconds").value(60))

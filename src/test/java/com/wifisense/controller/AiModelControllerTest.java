@@ -56,7 +56,7 @@ class AiModelControllerTest {
                 JSON.readTree("{\"algorithm\":\"IsolationForest\"}"),
                 JSON.readTree("{\"productionAlgorithm\":\"IsolationForest\"}"), true));
 
-        for (String role : new String[]{"ADMIN", "ANALYST", "VIEWER"}) {
+        for (String role : new String[]{"ADMIN", "ANALYST"}) {
             mvc.perform(get("/api/ai/model").with(as(role)))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.model.algorithm").value("IsolationForest"))
@@ -84,7 +84,7 @@ class AiModelControllerTest {
                 at.minusSeconds(604800), at), 300, true, at.plusSeconds(604800), List.of(version)));
         when(training.train("admin")).thenReturn(version);
 
-        mvc.perform(get("/api/ai/training").with(as("VIEWER")))
+        mvc.perform(get("/api/ai/training").with(as("ANALYST")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.canTrain").value(true))
                 .andExpect(jsonPath("$.available.samples").value(2016))

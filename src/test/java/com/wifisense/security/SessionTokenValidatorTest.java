@@ -62,9 +62,11 @@ class SessionTokenValidatorTest {
         Instant now = Instant.now();
 
         assertThat(validator.validate(token("eva", now, "ANALYST")).hasErrors()).isFalse();
-        eva.changeRole(User.Role.VIEWER);
+        eva.changeRole(User.Role.ADMIN);
         assertThat(validator.validate(token("eva", now, "ANALYST")).hasErrors()).isTrue();
-        assertThat(validator.validate(token("eva", now, "VIEWER")).hasErrors()).isFalse();
+        assertThat(validator.validate(token("eva", now, "ADMIN")).hasErrors()).isFalse();
+        // a token of the read-only role removed in Avance 33 matches no account
+        assertThat(validator.validate(token("eva", now, "VIEWER")).hasErrors()).isTrue();
         // a token without roles was not issued by this backend
         Jwt noRoles = Jwt.withTokenValue("t").header("alg", "HS256").subject("eva").issuedAt(now)
                 .expiresAt(now.plusSeconds(60)).build();

@@ -93,17 +93,19 @@ class SessionFlowIntegrationTest extends PostgresIntegrationTest {
         try {
             JsonNode eva = call(post("/api/auth/login"), null, Map.of("username", name, "password", PASSWORD), 200);
             call(get("/api/networks"), eva.get("token").asText(), null, 200);
+            call(get("/api/users"), eva.get("token").asText(), null, 403);
+            // the read-only role was removed in Avance 33: it cannot be given any more
+            call(patch("/api/users/" + id + "/role"), admin, Map.of("role", "VIEWER"), 400);
 
-            call(patch("/api/users/" + id + "/role"), admin, Map.of("role", "VIEWER"), 200);
+            call(patch("/api/users/" + id + "/role"), admin, Map.of("role", "ADMIN"), 200);
 
             // the token still says ANALYST: refused at once, not when it expires
             call(get("/api/networks"), eva.get("token").asText(), null, 401);
             // the browser renews with the rejected token still in its header: it is ignored there
-            JsonNode viewer = call(post("/api/auth/refresh"), eva.get("token").asText(),
+            JsonNode promoted = call(post("/api/auth/refresh"), eva.get("token").asText(),
                     Map.of("refreshToken", eva.get("refreshToken").asText()), 200);
-            assertThat(viewer.at("/user/role").asText()).isEqualTo("VIEWER");
-            call(get("/api/networks"), viewer.get("token").asText(), null, 200);
-            call(post("/api/networks/1/analyses"), viewer.get("token").asText(), Map.of("type", "THRESHOLD"), 403);
+            assertThat(promoted.at("/user/role").asText()).isEqualTo("ADMIN");
+            call(get("/api/users"), promoted.get("token").asText(), null, 200);
         } finally {
             call(delete("/api/users/" + id), admin, null, 204);
         }

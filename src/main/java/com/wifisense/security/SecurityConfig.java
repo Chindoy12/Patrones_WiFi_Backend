@@ -41,7 +41,6 @@ public class SecurityConfig {
 
     private static final String ADMIN = "ADMIN";
     private static final String ANALYST = "ANALYST";
-    private static final String VIEWER = "VIEWER";
     private static final String END_USER = "USER";
 
     /**
@@ -79,7 +78,7 @@ public class SecurityConfig {
                         // Technical captures: only an administrator asks for them and sees their results.
                         .requestMatchers("/api/networks/*/sensor/captures", "/api/networks/*/sensor/captures/**")
                         .hasRole(ADMIN)
-                        // Real end-user networks: the team members who support them, never a read-only viewer.
+                        // Real end-user networks: the team members who support them (the whole team since Avance 33).
                         .requestMatchers("/api/home-networks/**").hasAnyRole(ADMIN, ANALYST)
                         .requestMatchers(HttpMethod.POST, "/api/networks/*/measurements/collect",
                                 "/api/networks/*/analyses").hasAnyRole(ADMIN, ANALYST)
@@ -87,7 +86,7 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST, "/api/**").hasRole(ADMIN)
                         .requestMatchers(HttpMethod.PUT, "/api/**").hasRole(ADMIN)
                         .requestMatchers(HttpMethod.DELETE, "/api/**").hasRole(ADMIN)
-                        .requestMatchers("/api/**").hasAnyRole(ADMIN, ANALYST, VIEWER)
+                        .requestMatchers("/api/**").hasAnyRole(ADMIN, ANALYST)
                         .anyRequest().authenticated())
                 .exceptionHandling(errors -> errors.accessDeniedHandler(
                         // the audit is optional: the web tests load the security without the services

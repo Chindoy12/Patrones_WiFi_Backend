@@ -10,6 +10,7 @@ import com.wifisense.model.NetworkSensorPairingCode;
 import com.wifisense.repository.NetworkRepository;
 import com.wifisense.repository.NetworkSensorPairingCodeRepository;
 import com.wifisense.repository.NetworkSensorRepository;
+import com.wifisense.security.TokenHash;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -59,7 +60,7 @@ public class NetworkSensorService {
         String code = AgentPairingService.newCode(random);
         Instant now = Instant.now(clock);
         Instant expiresAt = now.plus(AgentPairingService.TTL);
-        codes.save(new NetworkSensorPairingCode(network, AgentPairingService.hash(code), now, expiresAt));
+        codes.save(new NetworkSensorPairingCode(network, TokenHash.sha256(code), now, expiresAt));
         return new AgentPairingCodeResponse(AgentPairingService.display(code), expiresAt);
     }
 
@@ -70,7 +71,7 @@ public class NetworkSensorService {
      */
     @Transactional
     Optional<AgentPairResponse> pair(String code) {
-        Optional<NetworkSensorPairingCode> found = codes.findByCodeHash(AgentPairingService.hash(code));
+        Optional<NetworkSensorPairingCode> found = codes.findByCodeHash(TokenHash.sha256(code));
         if (found.isEmpty()) {
             return Optional.empty();
         }
@@ -85,7 +86,7 @@ public class NetworkSensorService {
         sensors.deleteByNetworkId(networkId);  // clears the persistence context: the network is referenced again
         String key = AgentKeyService.generate(random);
         NetworkSensor sensor = sensors.saveAndFlush(new NetworkSensor(networks.getReferenceById(networkId),
-                AgentKeyService.hash(key), AgentKeyService.visiblePart(key)));
+                TokenHash.sha256(key), AgentKeyService.visiblePart(key)));
         return Optional.of(new AgentPairResponse(key, sensor.getKeyPrefix(), ssid));
     }
 
@@ -95,7 +96,7 @@ public class NetworkSensorService {
         if (!AgentKeyService.wellFormed(key)) {
             return Optional.empty();
         }
-        return sensors.findByKeyHash(AgentKeyService.hash(key));
+        return sensors.findByKeyHash(TokenHash.sha256(key));
     }
 
     @Transactional

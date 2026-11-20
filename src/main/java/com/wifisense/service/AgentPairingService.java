@@ -8,19 +8,16 @@ import com.wifisense.model.HomeNetwork;
 import com.wifisense.repository.AgentPairingCodeRepository;
 import com.wifisense.repository.HomeNetworkRepository;
 import com.wifisense.security.RecoveryBlockedException;
+import com.wifisense.security.TokenHash;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Deque;
-import java.util.HexFormat;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
@@ -66,7 +63,7 @@ public class AgentPairingService {
         codes.deleteByNetworkId(networkId);
         String code = newCode(random);
         Instant now = Instant.now(clock);
-        codes.save(new AgentPairingCode(network, hash(code), now, now.plus(TTL)));
+        codes.save(new AgentPairingCode(network, TokenHash.sha256(code), now, now.plus(TTL)));
         return new AgentPairingCodeResponse(display(code), now.plus(TTL));
     }
 
@@ -78,7 +75,7 @@ public class AgentPairingService {
         if (code == null) {
             throw new InvalidPairingCodeException();
         }
-        Optional<AgentPairingCode> found = codes.findByCodeHash(hash(code));
+        Optional<AgentPairingCode> found = codes.findByCodeHash(TokenHash.sha256(code));
         if (found.isEmpty()) {
             // The same installer serves the sensors of the team networks: their codes come from the team panel.
             return sensors.pair(code).orElseThrow(InvalidPairingCodeException::new);
@@ -140,15 +137,6 @@ public class AgentPairingService {
                 throw new RecoveryBlockedException();
             }
             recent.add(now);
-        }
-    }
-
-    static String hash(String code) {
-        try {
-            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
-                    .digest(code.getBytes(StandardCharsets.UTF_8)));
-        } catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException("SHA-256 no disponible", e);
         }
     }
 }

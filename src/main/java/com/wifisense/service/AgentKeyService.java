@@ -6,15 +6,12 @@ import com.wifisense.model.AgentKey;
 import com.wifisense.model.HomeNetwork;
 import com.wifisense.repository.AgentKeyRepository;
 import com.wifisense.repository.HomeNetworkRepository;
+import com.wifisense.security.TokenHash;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.util.Base64;
-import java.util.HexFormat;
 import java.util.regex.Pattern;
 
 /**
@@ -58,7 +55,7 @@ public class AgentKeyService {
         keys.deleteByNetworkId(networkId);  // clears the persistence context, so the network is referenced again below
         HomeNetwork network = networks.getReferenceById(networkId);
         String key = generate(random);
-        AgentKey saved = keys.saveAndFlush(new AgentKey(network, hash(key), visiblePart(key)));
+        AgentKey saved = keys.saveAndFlush(new AgentKey(network, TokenHash.sha256(key), visiblePart(key)));
         return new AgentKeyCreated(key, saved.getKeyPrefix(), saved.getCreatedAt());
     }
 
@@ -89,7 +86,7 @@ public class AgentKeyService {
         if (!wellFormed(key)) {
             throw new InvalidAgentKeyException();
         }
-        return keys.findByKeyHash(hash(key)).orElseThrow(InvalidAgentKeyException::new);
+        return keys.findByKeyHash(TokenHash.sha256(key)).orElseThrow(InvalidAgentKeyException::new);
     }
 
     private HomeNetwork ownNetwork(String username, Long networkId) {
@@ -110,14 +107,5 @@ public class AgentKeyService {
 
     static boolean wellFormed(String key) {
         return key != null && FORMAT.matcher(key).matches();
-    }
-
-    static String hash(String key) {
-        try {
-            byte[] digest = MessageDigest.getInstance("SHA-256").digest(key.getBytes(StandardCharsets.UTF_8));
-            return HexFormat.of().formatHex(digest);
-        } catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException("SHA-256 no disponible", e);
-        }
     }
 }

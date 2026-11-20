@@ -13,6 +13,7 @@ import com.wifisense.security.PasswordPolicy;
 import com.wifisense.security.RecoveryBlockedException;
 import com.wifisense.security.RecoveryThrottle;
 import com.wifisense.security.SessionService;
+import com.wifisense.security.TokenHash;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -77,7 +78,7 @@ class PasswordResetServiceTest {
         String token = sentToken();
         ArgumentCaptor<PasswordResetToken> stored = ArgumentCaptor.forClass(PasswordResetToken.class);
         verify(tokens).save(stored.capture());
-        assertThat(stored.getValue().getTokenHash()).isEqualTo(PasswordResetService.hash(token)).doesNotContain(token);
+        assertThat(stored.getValue().getTokenHash()).isEqualTo(TokenHash.sha256(token)).doesNotContain(token);
         assertThat(stored.getValue().getExpiresAt()).isEqualTo(NOW.plus(Duration.ofMinutes(30)));
         verify(tokens).deletePendingOf(4L);
     }
@@ -111,9 +112,9 @@ class PasswordResetServiceTest {
         when(users.findByEmailIgnoreCase("ana@gmail.com")).thenReturn(Optional.of(ana));
         service.requestLink("ana@gmail.com", "1.2.3.4");
         String token = sentToken();
-        PasswordResetToken stored = new PasswordResetToken(ana, PasswordResetService.hash(token), NOW,
+        PasswordResetToken stored = new PasswordResetToken(ana, TokenHash.sha256(token), NOW,
                 NOW.plusSeconds(1800));
-        when(tokens.findByTokenHash(PasswordResetService.hash(token))).thenReturn(Optional.of(stored));
+        when(tokens.findByTokenHash(TokenHash.sha256(token))).thenReturn(Optional.of(stored));
 
         service.reset(token, "Nueva#2026a", null, null);
 
@@ -127,9 +128,9 @@ class PasswordResetServiceTest {
 
     @Test
     void expiredMalformedOrUnknownLinksFailTheSameWay() {
-        PasswordResetToken expired = new PasswordResetToken(ana, PasswordResetService.hash("e".repeat(43)),
+        PasswordResetToken expired = new PasswordResetToken(ana, TokenHash.sha256("e".repeat(43)),
                 NOW.minusSeconds(3600), NOW.minusSeconds(1));
-        when(tokens.findByTokenHash(PasswordResetService.hash("e".repeat(43)))).thenReturn(Optional.of(expired));
+        when(tokens.findByTokenHash(TokenHash.sha256("e".repeat(43)))).thenReturn(Optional.of(expired));
 
         for (String token : new String[]{"e".repeat(43), "corto", null, "u".repeat(43)}) {
             assertThatThrownBy(() -> service.reset(token, "Nueva#2026a", null, null))
@@ -140,9 +141,9 @@ class PasswordResetServiceTest {
 
     @Test
     void theNewPasswordFollowsThePolicy() {
-        PasswordResetToken valid = new PasswordResetToken(ana, PasswordResetService.hash("v".repeat(43)), NOW,
+        PasswordResetToken valid = new PasswordResetToken(ana, TokenHash.sha256("v".repeat(43)), NOW,
                 NOW.plusSeconds(60));
-        when(tokens.findByTokenHash(PasswordResetService.hash("v".repeat(43)))).thenReturn(Optional.of(valid));
+        when(tokens.findByTokenHash(TokenHash.sha256("v".repeat(43)))).thenReturn(Optional.of(valid));
 
         assertThatThrownBy(() -> service.reset("v".repeat(43), "debil", null, null))
                 .isInstanceOf(InvalidAccountException.class);

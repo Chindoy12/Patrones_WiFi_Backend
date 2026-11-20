@@ -7,6 +7,7 @@ import com.wifisense.model.MonitorMode;
 import com.wifisense.model.NetworkSensor;
 import com.wifisense.repository.AgentCapabilitiesRepository;
 import com.wifisense.repository.AgentKeyRepository;
+import com.wifisense.security.TokenHash;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -45,7 +46,7 @@ public class AgentCapabilitiesService {
                 .map(NetworkSensor::getNetwork)
                 .map(network -> capabilities.findByNetworkId(network.getId())
                         .orElseGet(() -> AgentCapabilities.ofSensor(network.getId())))
-                .or(() -> keys.findByKeyHash(AgentKeyService.hash(rawKey))
+                .or(() -> keys.findByKeyHash(TokenHash.sha256(rawKey))
                         .map(AgentKey::getNetwork)
                         .map(home -> capabilities.findByHomeNetworkId(home.getId())
                                 .orElseGet(() -> AgentCapabilities.ofHome(home.getId()))));

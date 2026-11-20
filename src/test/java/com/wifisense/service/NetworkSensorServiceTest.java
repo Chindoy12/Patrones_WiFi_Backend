@@ -12,6 +12,7 @@ import com.wifisense.network.DataSourceType;
 import com.wifisense.repository.NetworkRepository;
 import com.wifisense.repository.NetworkSensorPairingCodeRepository;
 import com.wifisense.repository.NetworkSensorRepository;
+import com.wifisense.security.TokenHash;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -59,7 +60,7 @@ class NetworkSensorServiceTest {
         ArgumentCaptor<NetworkSensorPairingCode> stored = ArgumentCaptor.forClass(NetworkSensorPairingCode.class);
         verify(codes).save(stored.capture());
         assertThat(stored.getValue().getCodeHash())
-                .isEqualTo(AgentPairingService.hash(created.code().replace("-", "")));
+                .isEqualTo(TokenHash.sha256(created.code().replace("-", "")));
         verify(codes).deleteByNetworkId(5L);  // a previous pending code stops working
     }
 
@@ -78,9 +79,9 @@ class NetworkSensorServiceTest {
         NetworkSensor old = new NetworkSensor(library, "a".repeat(64), "wsa_old1");
         ReflectionTestUtils.setField(old, "id", 3L);
         when(sensors.findByNetworkId(5L)).thenReturn(Optional.of(old));
-        NetworkSensorPairingCode pending = new NetworkSensorPairingCode(library, AgentPairingService.hash("K7QM4RZD"),
+        NetworkSensorPairingCode pending = new NetworkSensorPairingCode(library, TokenHash.sha256("K7QM4RZD"),
                 NOW.minusSeconds(60), NOW.plusSeconds(840));
-        when(codes.findByCodeHash(AgentPairingService.hash("K7QM4RZD"))).thenReturn(Optional.of(pending));
+        when(codes.findByCodeHash(TokenHash.sha256("K7QM4RZD"))).thenReturn(Optional.of(pending));
 
         AgentPairResponse paired = service.pair("K7QM4RZD").orElseThrow();
 
@@ -89,7 +90,7 @@ class NetworkSensorServiceTest {
         assertThat(paired.networkName()).isEqualTo("WiFiSense-Test");
         ArgumentCaptor<NetworkSensor> saved = ArgumentCaptor.forClass(NetworkSensor.class);
         verify(sensors).saveAndFlush(saved.capture());
-        assertThat(saved.getValue().getKeyHash()).isEqualTo(AgentKeyService.hash(paired.key()));
+        assertThat(saved.getValue().getKeyHash()).isEqualTo(TokenHash.sha256(paired.key()));
         verify(codes).delete(pending);
         verify(sensors).deleteByNetworkId(5L);
         verify(throttle).forgetSensor(3L);
@@ -99,9 +100,9 @@ class NetworkSensorServiceTest {
     void aCodeOfMiWiFiIsNotASensorCodeAndAnExpiredOneFails() {
         assertThat(service.pair("ZZZZZZZZ")).isEmpty();
 
-        NetworkSensorPairingCode expired = new NetworkSensorPairingCode(library, AgentPairingService.hash("AAAABBBB"),
+        NetworkSensorPairingCode expired = new NetworkSensorPairingCode(library, TokenHash.sha256("AAAABBBB"),
                 NOW.minusSeconds(900), NOW);
-        when(codes.findByCodeHash(AgentPairingService.hash("AAAABBBB"))).thenReturn(Optional.of(expired));
+        when(codes.findByCodeHash(TokenHash.sha256("AAAABBBB"))).thenReturn(Optional.of(expired));
         assertThatThrownBy(() -> service.pair("AAAABBBB")).isInstanceOf(InvalidPairingCodeException.class);
         verify(sensors, never()).saveAndFlush(any());
     }

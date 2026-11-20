@@ -6,6 +6,7 @@ import com.wifisense.model.HomeNetwork;
 import com.wifisense.model.User;
 import com.wifisense.repository.AgentKeyRepository;
 import com.wifisense.repository.HomeNetworkRepository;
+import com.wifisense.security.TokenHash;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -43,7 +44,7 @@ class AgentKeyServiceTest {
         verify(keys).saveAndFlush(stored.capture());
         assertThat(created.key()).matches("^wsa_[A-Za-z0-9_-]{43}$");
         assertThat(created.prefix()).isEqualTo(created.key().substring(0, 8));
-        assertThat(stored.getValue().getKeyHash()).matches("^[0-9a-f]{64}$").isEqualTo(AgentKeyService.hash(created.key()));
+        assertThat(stored.getValue().getKeyHash()).matches("^[0-9a-f]{64}$").isEqualTo(TokenHash.sha256(created.key()));
         assertThat(stored.getValue().getKeyHash()).doesNotContain(created.key().substring(4));
         assertThat(service.create("ana", 7L).key()).isNotEqualTo(created.key());
     }
@@ -70,8 +71,8 @@ class AgentKeyServiceTest {
     @Test
     void authenticatesByHashAndRejectsEverythingElseTheSameWay() {
         String key = "wsa_" + "A".repeat(43);
-        AgentKey stored = new AgentKey(casa, AgentKeyService.hash(key), "wsa_AAAA");
-        when(keys.findByKeyHash(AgentKeyService.hash(key))).thenReturn(Optional.of(stored));
+        AgentKey stored = new AgentKey(casa, TokenHash.sha256(key), "wsa_AAAA");
+        when(keys.findByKeyHash(TokenHash.sha256(key))).thenReturn(Optional.of(stored));
 
         assertThat(service.authenticate(key)).isSameAs(stored);
         for (String bad : new String[]{null, "", "wsa_corta", "Bearer x", "wsa_" + "B".repeat(43)}) {

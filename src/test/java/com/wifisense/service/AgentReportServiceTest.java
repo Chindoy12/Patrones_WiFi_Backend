@@ -290,7 +290,7 @@ class AgentReportServiceTest {
     @Test
     void anUnauthorizedDeviceStillPresentRaisesAnAlert() {
         AgentDevice blocked = new AgentDevice(7L, PHONE, NOW.minusSeconds(3600));
-        blocked.setAuthorized(false);
+        blocked.authorize(false);
         when(devices.existsByNetworkId(7L)).thenReturn(true);
         when(devices.findByNetworkIdOrderByFirstSeenAtAsc(7L)).thenReturn(List.of(blocked));
 

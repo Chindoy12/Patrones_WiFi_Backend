@@ -38,7 +38,17 @@ ejecución, el diagrama de clases y los patrones que se investigaron y descartar
   validan las transiciones (`Alert.acknowledge()` falla si la alerta no está abierta).
 - **Abstracción / polimorfismo:** `NetworkDataSource`, `AnalysisStrategy`, `NetworkState`, `NetworkEventListener`.
 - **Composición sobre herencia:** los decoradores envuelven fuentes; la fachada compone estrategias y servicios.
-  La herencia se usa solo donde hay una relación "es un" real (`DataSourceDecorator`, `DataSourceCreator`).
+  La herencia se usa solo donde hay una relación "es un" real (`DataSourceDecorator`, `DataSourceCreator`,
+  `DeviceRegistry`, y desde el Avance 34 `ObservedDevice` y `WifiReport`).
+- **Sin clases repetidas (Avance 34):** un equipo visto en una casa (`AgentDevice`) y uno visto por el sensor de una
+  red del equipo (`SensorDevice`) son lo mismo guardado en dos tablas: todo lo que saben y hacen está una sola vez en
+  `ObservedDevice` (`@MappedSuperclass`), y cada uno solo dice su tabla y la columna de su red. Igual los reportes:
+  `WifiReport` con `AgentReport` y `SensorReport`. Lo que se repetía en los servicios también quedó en un solo lugar:
+  `AgentOverviewAssembler` (la vista de Mi Wi-Fi y del sensor), `AgentInsights.fill` (llenar un reporte),
+  `TokenHash` (el SHA-256 de tokens, claves y códigos) y `SlidingWindowLimiter` (los límites de intentos). No cambia
+  ninguna tabla: `EntityMappingIntegrationTest` comprueba cada entidad contra el esquema real.
+- **Polimorfismo en lugar de preguntar el tipo:** `WifiReport.getAnomalyDetected()` es null en el reporte del sensor
+  y `AgentReport` lo sobrescribe con lo que dijo la IA, así la vista de los dos se arma con el mismo código.
 - **S:** lectura (`MeasurementService`) y escritura (`MeasurementCollectionService`) separadas; validación,
   logs y métricas en decoradores distintos.
 - **O:** nuevas fuentes, estrategias u observadores se agregan como clases nuevas.
@@ -425,9 +435,9 @@ No hay usuarios de demostración. Al arrancar se crea (o actualiza) el administr
 
 ## Pruebas
 
-`src/test/java` (convención Maven), 593 pruebas:
+`src/test/java` (convención Maven), 600 pruebas:
 
-- **Unitarias y de controladores (573):** fuentes de datos y decoradores, transiciones de estado, las tres
+- **Unitarias y de controladores (578):** fuentes de datos y decoradores, transiciones de estado, las tres
   estrategias, la fachada con mocks, observadores, ciclo de vida de alertas y `@WebMvcTest` que verifica seguridad por
   rol, validación y errores 404, el agente (claves, límite de reportes, equipos nuevos y con MAC privada, canal
   recomendado, IA caída), el panel del equipo con datos reales, las sesiones (rotación, copia detectada, cambio de
@@ -448,8 +458,9 @@ No hay usuarios de demostración. Al arrancar se crea (o actualiza) el administr
   el Avance 26, «En vivo»: quién mira y cuándo se detiene el agente, estados, límites y ventana de 5 minutos
   (`LiveMonitorTest`), qué significa el último minuto (`LiveSummaryTest`), la clave decide la red y la propiedad de
   las redes (`LiveServiceTest`) y los endpoints de la página y del agente (`LiveControllerTest`,
-  `AgentLiveControllerTest`).
-- **De integración con PostgreSQL real (20, paquete `integration`):** el backend completo contra una base creada con
+  `AgentLiveControllerTest`). Desde el Avance 34, el hash de los secretos (`TokenHashTest`) y los límites de intentos
+  (`SlidingWindowLimiterTest`).
+- **De integración con PostgreSQL real (22, paquete `integration`):** el backend completo contra una base creada con
   las migraciones de WiFiSense-database, conectado como `wifisense_app`. Prueban por HTTP el registro, el inicio de
   sesión sin importar mayúsculas, la renovación, la copia de un refresh token, el cierre de sesión, el cambio de
   contraseña y de rol; y en SQL que un refresh token se gasta una sola vez, que las estadísticas del reporte calculadas
@@ -468,6 +479,9 @@ No hay usuarios de demostración. Al arrancar se crea (o actualiza) el administr
   (`CaptureFlowIntegrationTest`): rechazada y auditada mientras el sensor no puede capturar, pedida con propósito,
   tomada por el sensor con sus límites, detenida a pedido, con resultado que solo trae conteos; una analista no puede
   pedirla ni leerla (queda `DENIED` en la auditoría) y ni el agente de Mi Wi-Fi ni el sensor de otra red la tocan.
+  Desde el Avance 34, el agente de una casa de punta a punta (`HomeAgentFlowIntegrationTest`: instalar con el código,
+  el reporte en `agent_reports`, los equipos en `agent_devices`, nombrar un equipo y marcarlo como no autorizado) y
+  cada entidad contra su tabla con todas sus columnas (`EntityMappingIntegrationTest`).
   Se ejecutan cuando existe `WIFISENSE_IT_DATABASE_URL`.
 
 **GitHub Actions** (`.github/workflows/backend.yml`) corre en cada Pull Request y en `main`: crea PostgreSQL 16 con las

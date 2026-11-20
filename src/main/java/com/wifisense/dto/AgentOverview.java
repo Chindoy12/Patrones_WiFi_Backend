@@ -3,6 +3,8 @@ package com.wifisense.dto;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.wifisense.model.DeviceIdentification;
 import com.wifisense.model.NameSource;
+import com.wifisense.model.ObservedDevice;
+import com.wifisense.model.WifiReport;
 
 import java.time.Instant;
 import java.util.List;
@@ -27,10 +29,24 @@ public record AgentOverview(KeyInfo key, boolean online, Report latest, List<His
                          Double packetLossPct, Double gatewayLatencyMs, int deviceCount, int newDeviceCount,
                          Integer securityScore, String securityGrade, Integer qualityScore, Boolean anomalyDetected,
                          String anomalyType, JsonNode details) {
+
+        /** The view of a stored report of a home or of a team network; {@code details} is its JSON, already read. */
+        public static Report of(WifiReport r, JsonNode details) {
+            return new Report(r.getId(), r.getReceivedAt(), r.getAgentVersion(), r.getSsid(), r.getAuthentication(),
+                    r.getBand(), r.getChannel(), r.getSignalDbm(), r.getLatencyMs(), r.getJitterMs(),
+                    r.getPacketLossPct(), r.getGatewayLatencyMs(), r.getDeviceCount(), r.getNewDeviceCount(),
+                    r.getSecurityScore(), r.getSecurityGrade(), r.getQualityScore(), r.getAnomalyDetected(),
+                    r.getAnomalyType(), details);
+        }
     }
 
     public record HistoryPoint(Instant at, Double latencyMs, int deviceCount, Integer securityScore,
                                Integer qualityScore, Boolean anomalyDetected) {
+
+        public static HistoryPoint of(WifiReport r) {
+            return new HistoryPoint(r.getReceivedAt(), r.getLatencyMs(), r.getDeviceCount(), r.getSecurityScore(),
+                    r.getQualityScore(), r.getAnomalyDetected());
+        }
     }
 
     /**
@@ -50,6 +66,13 @@ public record AgentOverview(KeyInfo key, boolean online, Report latest, List<His
                       String role, String model, NameSource nameSource) {
             this(id, label, vendor, hostname, privateMac, authorized, firstSeenAt, lastSeenAt, online, recent, kind,
                     role, model, nameSource, DeviceIdentification.of(label, hostname, nameSource, vendor, kind));
+        }
+
+        /** The view of a stored device of a home or of a team network. */
+        public static Device of(ObservedDevice d, boolean online, boolean recent) {
+            return new Device(d.getFingerprint(), d.getLabel(), d.getVendor(), d.getHostname(), d.isPrivateMac(),
+                    d.isAuthorized(), d.getFirstSeenAt(), d.getLastSeenAt(), online, recent, d.getKind(), d.getRole(),
+                    d.getModel(), d.getNameSource());
         }
 
         public Device(String id, String label, String vendor, String hostname, boolean privateMac, boolean authorized,

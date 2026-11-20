@@ -45,7 +45,7 @@ class SessionServiceTest {
     }
 
     private RefreshToken stored(Instant createdAt, Instant usedAt, Instant revokedAt) {
-        RefreshToken token = new RefreshToken(ana, family, SessionService.hash(TOKEN), createdAt,
+        RefreshToken token = new RefreshToken(ana, family, TokenHash.sha256(TOKEN), createdAt,
                 createdAt.plus(Duration.ofDays(14)));
         ReflectionTestUtils.setField(token, "usedAt", usedAt);
         ReflectionTestUtils.setField(token, "revokedAt", revokedAt);
@@ -62,7 +62,7 @@ class SessionServiceTest {
         verify(tokens).save(saved.capture());
         assertThat(session.token()).isEqualTo("jwt");
         assertThat(session.refreshToken()).matches("[A-Za-z0-9_-]{43}");
-        assertThat(saved.getValue().getTokenHash()).isEqualTo(SessionService.hash(session.refreshToken()))
+        assertThat(saved.getValue().getTokenHash()).isEqualTo(TokenHash.sha256(session.refreshToken()))
                 .doesNotContain(session.refreshToken());
         assertThat(session.refreshExpiresAt()).isEqualTo(NOW.plus(Duration.ofDays(14)));
         assertThat(session.user().username()).isEqualTo("Ana");
@@ -70,8 +70,8 @@ class SessionServiceTest {
 
     @Test
     void eachRefreshUsesUpTheTokenAndContinuesTheSameFamily() {
-        when(tokens.use(SessionService.hash(TOKEN), NOW)).thenReturn(1);
-        when(tokens.findByTokenHash(SessionService.hash(TOKEN)))
+        when(tokens.use(TokenHash.sha256(TOKEN), NOW)).thenReturn(1);
+        when(tokens.findByTokenHash(TokenHash.sha256(TOKEN)))
                 .thenReturn(Optional.of(stored(NOW.minusSeconds(3600), NOW, null)));
 
         AuthResponse next = sessions.refresh(TOKEN);
@@ -86,7 +86,7 @@ class SessionServiceTest {
     @Test
     void aTokenPresentedAgainRevealsACopyAndClosesTheWholeFamily() {
         when(tokens.use(anyString(), any())).thenReturn(0);
-        when(tokens.findByTokenHash(SessionService.hash(TOKEN)))
+        when(tokens.findByTokenHash(TokenHash.sha256(TOKEN)))
                 .thenReturn(Optional.of(stored(NOW.minusSeconds(7200), NOW.minusSeconds(600), null)));
 
         assertThatThrownBy(() -> sessions.refresh(TOKEN)).isInstanceOf(InvalidSessionException.class);
@@ -97,7 +97,7 @@ class SessionServiceTest {
     @Test
     void theSameBrowserRetryingWithinTheGraceIsRefusedWithoutClosingTheSession() {
         when(tokens.use(anyString(), any())).thenReturn(0);
-        when(tokens.findByTokenHash(SessionService.hash(TOKEN)))
+        when(tokens.findByTokenHash(TokenHash.sha256(TOKEN)))
                 .thenReturn(Optional.of(stored(NOW.minusSeconds(7200), NOW.minusSeconds(3), null)));
 
         assertThatThrownBy(() -> sessions.refresh(TOKEN)).isInstanceOf(InvalidSessionException.class);
@@ -109,7 +109,7 @@ class SessionServiceTest {
         when(tokens.use(anyString(), any())).thenReturn(0);
         assertThatThrownBy(() -> sessions.refresh(TOKEN)).isInstanceOf(InvalidSessionException.class);
 
-        when(tokens.findByTokenHash(SessionService.hash(TOKEN)))
+        when(tokens.findByTokenHash(TokenHash.sha256(TOKEN)))
                 .thenReturn(Optional.of(stored(NOW.minusSeconds(7200), null, NOW.minusSeconds(60))));
         assertThatThrownBy(() -> sessions.refresh(TOKEN)).isInstanceOf(InvalidSessionException.class);
 
@@ -124,7 +124,7 @@ class SessionServiceTest {
     void aPasswordChangeAfterTheLoginEndsThatSession() {
         ana.changePassword("h2", NOW.minusSeconds(60));
         when(tokens.use(anyString(), any())).thenReturn(1);
-        when(tokens.findByTokenHash(SessionService.hash(TOKEN)))
+        when(tokens.findByTokenHash(TokenHash.sha256(TOKEN)))
                 .thenReturn(Optional.of(stored(NOW.minusSeconds(3600), NOW, null)));
 
         assertThatThrownBy(() -> sessions.refresh(TOKEN)).isInstanceOf(InvalidSessionException.class);
@@ -134,7 +134,7 @@ class SessionServiceTest {
 
     @Test
     void signingOutRevokesTheFamilyAndIgnoresUnknownTokens() {
-        when(tokens.findByTokenHash(SessionService.hash(TOKEN)))
+        when(tokens.findByTokenHash(TokenHash.sha256(TOKEN)))
                 .thenReturn(Optional.of(stored(NOW.minusSeconds(60), null, null)));
 
         sessions.end(TOKEN);

@@ -101,7 +101,7 @@ class AgentOverviewServiceTest {
         mine.seen(NOW);
         AgentDevice stranger = new AgentDevice(7L, "c".repeat(24), NOW.minus(Duration.ofHours(1)));
         stranger.identify("Samsung", "Galaxy");
-        stranger.setAuthorized(false);
+        stranger.authorize(false);
         stranger.seen(NOW);
         when(devices.findByNetworkIdOrderByFirstSeenAtAsc(7L)).thenReturn(List.of(mine, stranger));
 

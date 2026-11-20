@@ -1,6 +1,7 @@
 package com.wifisense.repository;
 
 import com.wifisense.model.AgentDevice;
+import com.wifisense.model.ObservedDevice;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
@@ -10,7 +11,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 
-public interface AgentDeviceRepository extends JpaRepository<AgentDevice, AgentDevice.Key> {
+public interface AgentDeviceRepository extends JpaRepository<AgentDevice, ObservedDevice.Key> {
 
     List<AgentDevice> findByNetworkIdOrderByFirstSeenAtAsc(Long networkId);
 

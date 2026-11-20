@@ -9,6 +9,7 @@ import com.wifisense.model.User;
 import com.wifisense.repository.AgentPairingCodeRepository;
 import com.wifisense.repository.HomeNetworkRepository;
 import com.wifisense.security.RecoveryBlockedException;
+import com.wifisense.security.TokenHash;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -52,7 +53,7 @@ class AgentPairingServiceTest {
         ArgumentCaptor<AgentPairingCode> stored = ArgumentCaptor.forClass(AgentPairingCode.class);
         verify(codes).save(stored.capture());
         assertThat(stored.getValue().getCodeHash())
-                .isEqualTo(AgentPairingService.hash(created.code().replace("-", "")));
+                .isEqualTo(TokenHash.sha256(created.code().replace("-", "")));
         verify(codes).deleteByNetworkId(7L);
     }
 
@@ -64,8 +65,8 @@ class AgentPairingServiceTest {
 
     @Test
     void aValidCodeIsSpentAndBecomesTheAgentKey() {
-        AgentPairingCode pending = new AgentPairingCode(casa, AgentPairingService.hash("K7QM4RZD"), NOW, NOW.plusSeconds(600));
-        when(codes.findByCodeHash(AgentPairingService.hash("K7QM4RZD"))).thenReturn(Optional.of(pending));
+        AgentPairingCode pending = new AgentPairingCode(casa, TokenHash.sha256("K7QM4RZD"), NOW, NOW.plusSeconds(600));
+        when(codes.findByCodeHash(TokenHash.sha256("K7QM4RZD"))).thenReturn(Optional.of(pending));
 
         AgentPairResponse paired = service.pair(" k7qm-4rzd ", "1.2.3.4");
 
@@ -77,8 +78,8 @@ class AgentPairingServiceTest {
 
     @Test
     void expiredUnknownOrMalformedCodesFailTheSameWay() {
-        AgentPairingCode old = new AgentPairingCode(casa, AgentPairingService.hash("AAAABBBB"), NOW.minusSeconds(900), NOW);
-        when(codes.findByCodeHash(AgentPairingService.hash("AAAABBBB"))).thenReturn(Optional.of(old));
+        AgentPairingCode old = new AgentPairingCode(casa, TokenHash.sha256("AAAABBBB"), NOW.minusSeconds(900), NOW);
+        when(codes.findByCodeHash(TokenHash.sha256("AAAABBBB"))).thenReturn(Optional.of(old));
 
         for (String code : new String[]{"AAAA-BBBB", "ZZZZ-ZZZZ", "0000-1111", "corto", null}) {
             assertThatThrownBy(() -> service.pair(code, "1.2.3.4")).isInstanceOf(InvalidPairingCodeException.class);

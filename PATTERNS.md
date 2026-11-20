@@ -120,8 +120,12 @@ classDiagram
     class TrackedDevice {
         <<interface>>
     }
-    TrackedDevice <|.. AgentDevice
-    TrackedDevice <|.. SensorDevice
+    class ObservedDevice {
+        <<abstract>>
+    }
+    TrackedDevice <|.. ObservedDevice
+    ObservedDevice <|-- AgentDevice
+    ObservedDevice <|-- SensorDevice
     AgentReportService --> HomeDeviceRegistry
     SensorDeviceService --> TeamDeviceRegistry
 ```
@@ -383,10 +387,11 @@ una sola habría hecho que la casa y la sede contaran distinto los equipos nuevo
 **Solution.** `DeviceRegistry.register()` es el método plantilla (`final`): recorre el reporte y aplica las reglas
 en el mismo orden para todos. Las subclases solo dicen dónde viven sus equipos: `HomeDeviceRegistry`
 (`agent_devices`) y `TeamDeviceRegistry` (`network_sensor_devices`). Las dos entidades implementan `TrackedDevice`,
-la interfaz con lo que el algoritmo necesita de un equipo.
+la interfaz con lo que el algoritmo necesita de un equipo; desde el Avance 34 lo hacen una sola vez, en su clase base
+`ObservedDevice` (`@MappedSuperclass`): `AgentDevice` y `SensorDevice` solo dicen su tabla y la columna de su red.
 
 **Classes.** Plantilla: `DeviceRegistry<D extends TrackedDevice>` · pasos concretos: `HomeDeviceRegistry`,
-`TeamDeviceRegistry` · producto: `AgentDevice`, `SensorDevice` (`TrackedDevice`).
+`TeamDeviceRegistry` · producto: `AgentDevice`, `SensorDevice` (`ObservedDevice`, que implementa `TrackedDevice`).
 
 **Where.** `com.wifisense.service.DeviceRegistry`, `com.wifisense.model.TrackedDevice`
 
@@ -540,6 +545,9 @@ Patterns* de Microsoft (Circuit Breaker, Bulkhead, Retry) y la documentación de
 - **Repository** (Spring Data JPA): `*Repository` aísla las consultas; las de rendimiento usan SQL nativo
   (`MeasurementStatsRepository`).
 - **DTO**: los `record` de `com.wifisense.dto` separan lo que viaja por HTTP de las entidades.
+- **Herencia de entidades sin tablas nuevas** (`@MappedSuperclass`, Avance 34): `ObservedDevice` y `WifiReport`
+  guardan una sola vez lo que comparten los equipos y los reportes de una casa y de una red del equipo. No es un patrón
+  GoF: es la forma de JPA de no repetir una entidad que vive en dos tablas.
 - **Capas**: controlador → servicio → repositorio; los controladores no tocan entidades ni SQL.
 - En la página, **Custom Hook** (`useApi`) y un único punto de salida HTTP (`apiClient`); en la IA, el
   recomendador opcional (`ClaudeAdvisor`) con respaldo en reglas cuando Claude no está disponible.

@@ -12,19 +12,16 @@ import com.wifisense.security.PasswordCipher;
 import com.wifisense.security.PasswordPolicy;
 import com.wifisense.security.RecoveryThrottle;
 import com.wifisense.security.SessionService;
+import com.wifisense.security.TokenHash;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.Base64;
-import java.util.HexFormat;
 import java.util.List;
 import java.util.Optional;
 import java.util.regex.Pattern;
@@ -93,7 +90,7 @@ public class PasswordResetService {
         byte[] secret = new byte[32];
         random.nextBytes(secret);
         String token = Base64.getUrlEncoder().withoutPadding().encodeToString(secret);
-        tokens.save(new PasswordResetToken(user, hash(token), now, now.plus(properties.resetTtl())));
+        tokens.save(new PasswordResetToken(user, TokenHash.sha256(token), now, now.plus(properties.resetTtl())));
         // The token travels in the fragment (#), which browsers never send to servers or put in Referer headers.
         String link = properties.frontendUrl().replaceAll("/+$", "") + "/restablecer#t=" + token;
         mail.sendLater(RecoveryEmail.build(user.getEmail(), user.getUsername(), link, properties.resetTtl()));
@@ -107,7 +104,7 @@ public class PasswordResetService {
             throw new InvalidResetLinkException();
         }
         Instant now = Instant.now(clock);
-        PasswordResetToken link = tokens.findByTokenHash(hash(token))
+        PasswordResetToken link = tokens.findByTokenHash(TokenHash.sha256(token))
                 .filter(t -> t.isUsable(now)).orElseThrow(InvalidResetLinkException::new);
         List<String> errors = policy.passwordViolations(password);
         if (!errors.isEmpty()) {
@@ -125,14 +122,5 @@ public class PasswordResetService {
     @Transactional
     public void purgeExpired() {
         tokens.deleteExpiredBefore(Instant.now(clock));
-    }
-
-    static String hash(String token) {
-        try {
-            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
-                    .digest(token.getBytes(StandardCharsets.UTF_8)));
-        } catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException("SHA-256 no disponible", e);
-        }
     }
 }

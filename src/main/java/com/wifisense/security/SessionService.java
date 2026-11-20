@@ -13,14 +13,10 @@ import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.Base64;
-import java.util.HexFormat;
 import java.util.List;
 import java.util.UUID;
 import java.util.regex.Pattern;
@@ -100,7 +96,7 @@ public class SessionService {
         if (refreshToken == null || !TOKEN.matcher(refreshToken).matches()) {
             return;
         }
-        tokens.findByTokenHash(hash(refreshToken))
+        tokens.findByTokenHash(TokenHash.sha256(refreshToken))
                 .ifPresent(token -> tokens.revokeFamily(token.getFamilyId(), Instant.now(clock)));
     }
 
@@ -121,7 +117,7 @@ public class SessionService {
         random.nextBytes(secret);
         String refreshToken = Base64.getUrlEncoder().withoutPadding().encodeToString(secret);
         Instant refreshExpiresAt = now.plus(properties.refreshTtl());
-        tokens.save(new RefreshToken(user, family, hash(refreshToken), now, refreshExpiresAt));
+        tokens.save(new RefreshToken(user, family, TokenHash.sha256(refreshToken), now, refreshExpiresAt));
         TokenService.IssuedToken access = accessTokens.issue(new UsernamePasswordAuthenticationToken(
                 user.getUsername(), null, List.of(new SimpleGrantedAuthority("ROLE_" + user.getRole().name()))));
         return new AuthResponse(access.value(), access.expiresAt(), UserResponse.from(user), refreshToken,
@@ -142,15 +138,6 @@ public class SessionService {
         if (refreshToken == null || !TOKEN.matcher(refreshToken).matches()) {
             throw new InvalidSessionException();
         }
-        return hash(refreshToken);
-    }
-
-    static String hash(String token) {
-        try {
-            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
-                    .digest(token.getBytes(StandardCharsets.UTF_8)));
-        } catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException("SHA-256 no disponible", e);
-        }
+        return TokenHash.sha256(refreshToken);
     }
 }

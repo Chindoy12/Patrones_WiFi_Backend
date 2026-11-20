@@ -117,15 +117,7 @@ public class SensorReportService {
         details.set("quality", quality);
         details.set("channel", channel);
         SensorReport report = new SensorReport(networks.getReferenceById(networkId), now, request.agentVersion());
-        report.wifi(request.ssid(), request.authentication(), request.band(), request.channel(), request.signalDbm());
-        report.connection(request.latencyMs(), request.jitterMs(), request.packetLossPct(), request.gatewayLatencyMs());
-        report.devices(deviceCount, newDevices);
-        if (security != null) {
-            report.security(security.get("score").asInt(), security.get("grade").asText());
-        }
-        if (quality != null) {
-            report.quality(quality.get("score").asInt());
-        }
+        insights.fill(report, request, deviceCount, newDevices, security, quality);
         report.details(details.toString());
         reports.save(report);
         raiseAlerts(networkId, ssid, newDevices, seen.unauthorizedPresent(), security);
@@ -199,11 +191,7 @@ public class SensorReportService {
     }
 
     private static String summary(String ssid, NetworkStatus status) {
-        String state = status == null ? "" : switch (status) {
-            case NORMAL -> " Estado: normal.";
-            case WARNING -> " Estado: advertencia.";
-            case CRITICAL -> " Estado: crítico.";
-        };
+        String state = status == null ? "" : " Estado: " + status.label() + ".";
         return "Sensor de «" + ssid + "»: medición guardada." + state;
     }
 }

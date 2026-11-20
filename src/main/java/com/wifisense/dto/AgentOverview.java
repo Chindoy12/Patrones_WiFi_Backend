@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.wifisense.model.DeviceIdentification;
 import com.wifisense.model.NameSource;
 import com.wifisense.model.ObservedDevice;
+import com.wifisense.model.WifiReport;
 
 import java.time.Instant;
 import java.util.List;
@@ -28,10 +29,24 @@ public record AgentOverview(KeyInfo key, boolean online, Report latest, List<His
                          Double packetLossPct, Double gatewayLatencyMs, int deviceCount, int newDeviceCount,
                          Integer securityScore, String securityGrade, Integer qualityScore, Boolean anomalyDetected,
                          String anomalyType, JsonNode details) {
+
+        /** The view of a stored report of a home or of a team network; {@code details} is its JSON, already read. */
+        public static Report of(WifiReport r, JsonNode details) {
+            return new Report(r.getId(), r.getReceivedAt(), r.getAgentVersion(), r.getSsid(), r.getAuthentication(),
+                    r.getBand(), r.getChannel(), r.getSignalDbm(), r.getLatencyMs(), r.getJitterMs(),
+                    r.getPacketLossPct(), r.getGatewayLatencyMs(), r.getDeviceCount(), r.getNewDeviceCount(),
+                    r.getSecurityScore(), r.getSecurityGrade(), r.getQualityScore(), r.getAnomalyDetected(),
+                    r.getAnomalyType(), details);
+        }
     }
 
     public record HistoryPoint(Instant at, Double latencyMs, int deviceCount, Integer securityScore,
                                Integer qualityScore, Boolean anomalyDetected) {
+
+        public static HistoryPoint of(WifiReport r) {
+            return new HistoryPoint(r.getReceivedAt(), r.getLatencyMs(), r.getDeviceCount(), r.getSecurityScore(),
+                    r.getQualityScore(), r.getAnomalyDetected());
+        }
     }
 
     /**

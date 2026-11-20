@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.wifisense.analysis.*;
 import com.wifisense.dto.AgentReportRequest;
+import com.wifisense.model.WifiReport;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -28,6 +29,23 @@ class AgentInsights {
     AgentInsights(AiAnalysisClient ai, ObjectMapper json) {
         this.ai = ai;
         this.json = json;
+    }
+
+    /**
+     * Fills a report with what the agent measured and the verdicts of the AI that came back (a null verdict leaves
+     * its columns empty). The same for a home and for a team network; the details JSON is set by the caller.
+     */
+    void fill(WifiReport report, AgentReportRequest request, int deviceCount, int newDevices, JsonNode security,
+              JsonNode quality) {
+        report.wifi(request.ssid(), request.authentication(), request.band(), request.channel(), request.signalDbm());
+        report.connection(request.latencyMs(), request.jitterMs(), request.packetLossPct(), request.gatewayLatencyMs());
+        report.devices(deviceCount, newDevices);
+        if (security != null) {
+            report.security(security.get("score").asInt(), security.get("grade").asText());
+        }
+        if (quality != null) {
+            report.quality(quality.get("score").asInt());
+        }
     }
 
     ObjectNode wifiDetails(AgentReportRequest request) {

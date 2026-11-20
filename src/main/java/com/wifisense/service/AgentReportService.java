@@ -100,17 +100,7 @@ public class AgentReportService {
 
         AgentReport saved = Objects.requireNonNull(transaction.execute(status -> {
             AgentReport report = new AgentReport(networks.getReferenceById(networkId), now, request.agentVersion());
-            report.wifi(request.ssid(), request.authentication(), request.band(), request.channel(),
-                    request.signalDbm());
-            report.connection(request.latencyMs(), request.jitterMs(), request.packetLossPct(),
-                    request.gatewayLatencyMs());
-            report.devices(deviceCount, newDevices);
-            if (security != null) {
-                report.security(security.get("score").asInt(), security.get("grade").asText());
-            }
-            if (quality != null) {
-                report.quality(quality.get("score").asInt());
-            }
+            insights.fill(report, request, deviceCount, newDevices, security, quality);
             if (anomaly != null) {
                 report.anomaly(anomaly.anomalyDetected(),
                         AnomalyType.fromAi(anomaly.anomalyType(), anomaly.anomalyDetected()).name());

@@ -8,6 +8,7 @@ import com.wifisense.model.HomeNetwork;
 import com.wifisense.repository.AgentPairingCodeRepository;
 import com.wifisense.repository.HomeNetworkRepository;
 import com.wifisense.security.RecoveryBlockedException;
+import com.wifisense.security.SlidingWindowLimiter;
 import com.wifisense.security.TokenHash;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
@@ -17,12 +18,8 @@ import java.security.SecureRandom;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.Deque;
 import java.util.Locale;
-import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentLinkedDeque;
 
 /**
  * Installs the agent without copying the long key: Mi Wi-Fi shows an 8-character code (15 minutes, one use) and the
@@ -44,7 +41,7 @@ public class AgentPairingService {
     private final NetworkSensorService sensors;
     private final Clock clock;
     private final SecureRandom random = new SecureRandom();
-    private final Map<String, Deque<Instant>> attempts = new ConcurrentHashMap<>();
+    private final SlidingWindowLimiter attempts;
 
     public AgentPairingService(AgentPairingCodeRepository codes, HomeNetworkRepository networks, AgentKeyService keys,
                                NetworkSensorService sensors, Clock clock) {
@@ -53,6 +50,7 @@ public class AgentPairingService {
         this.keys = keys;
         this.sensors = sensors;
         this.clock = clock;
+        this.attempts = new SlidingWindowLimiter(MAX_ATTEMPTS, ATTEMPT_WINDOW, clock);
     }
 
     /** A new code for the owner's network; a previous pending code stops working. */
@@ -129,14 +127,8 @@ public class AgentPairingService {
     }
 
     private void countAttempt(String address) {
-        Instant now = Instant.now(clock);
-        Deque<Instant> recent = attempts.computeIfAbsent(address, k -> new ConcurrentLinkedDeque<>());
-        synchronized (recent) {
-            recent.removeIf(at -> at.isBefore(now.minus(ATTEMPT_WINDOW)));
-            if (recent.size() >= MAX_ATTEMPTS) {
-                throw new RecoveryBlockedException();
-            }
-            recent.add(now);
+        if (!attempts.tryAcquire(address)) {
+            throw new RecoveryBlockedException();
         }
     }
 }

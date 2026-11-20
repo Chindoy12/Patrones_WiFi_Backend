@@ -4,11 +4,6 @@ import org.springframework.stereotype.Service;
 
 import java.time.Clock;
 import java.time.Duration;
-import java.time.Instant;
-import java.util.Deque;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentLinkedDeque;
 
 /** Limits how many accounts one address can register per hour, so the public sign-up cannot be flooded. */
 @Service
@@ -17,23 +12,21 @@ public class RegistrationThrottle {
     static final int MAX_PER_ADDRESS = 5;
     static final Duration WINDOW = Duration.ofHours(1);
 
-    private final Map<String, Deque<Instant>> registrations = new ConcurrentHashMap<>();
-    private final Clock clock;
+    private final SlidingWindowLimiter registrations;
 
     public RegistrationThrottle(Clock clock) {
-        this.clock = clock;
+        this.registrations = new SlidingWindowLimiter(MAX_PER_ADDRESS, WINDOW, clock);
     }
 
+    /** Before creating the account: throws {@link RegistrationBlockedException} when this address is at its limit. */
     public void check(String address) {
-        Deque<Instant> recent = registrations.computeIfAbsent(address, key -> new ConcurrentLinkedDeque<>());
-        Instant cutoff = Instant.now(clock).minus(WINDOW);
-        recent.removeIf(at -> at.isBefore(cutoff));
-        if (recent.size() >= MAX_PER_ADDRESS) {
+        if (!registrations.hasRoom(address)) {
             throw new RegistrationBlockedException();
         }
     }
 
+    /** After the account was created (a sign-up that failed does not count). */
     public void record(String address) {
-        registrations.computeIfAbsent(address, key -> new ConcurrentLinkedDeque<>()).add(Instant.now(clock));
+        registrations.record(address);
     }
 }

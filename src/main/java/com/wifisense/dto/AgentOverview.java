@@ -3,6 +3,7 @@ package com.wifisense.dto;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.wifisense.model.DeviceIdentification;
 import com.wifisense.model.NameSource;
+import com.wifisense.model.ObservedDevice;
 
 import java.time.Instant;
 import java.util.List;
@@ -50,6 +51,13 @@ public record AgentOverview(KeyInfo key, boolean online, Report latest, List<His
                       String role, String model, NameSource nameSource) {
             this(id, label, vendor, hostname, privateMac, authorized, firstSeenAt, lastSeenAt, online, recent, kind,
                     role, model, nameSource, DeviceIdentification.of(label, hostname, nameSource, vendor, kind));
+        }
+
+        /** The view of a stored device of a home or of a team network. */
+        public static Device of(ObservedDevice d, boolean online, boolean recent) {
+            return new Device(d.getFingerprint(), d.getLabel(), d.getVendor(), d.getHostname(), d.isPrivateMac(),
+                    d.isAuthorized(), d.getFirstSeenAt(), d.getLastSeenAt(), online, recent, d.getKind(), d.getRole(),
+                    d.getModel(), d.getNameSource());
         }
 
         public Device(String id, String label, String vendor, String hostname, boolean privateMac, boolean authorized,

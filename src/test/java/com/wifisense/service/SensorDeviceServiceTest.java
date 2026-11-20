@@ -75,7 +75,7 @@ class SensorDeviceServiceTest {
     @Test
     void laterADeviceNeverSeenIsNewAndABlockedOneThatIsConnectedIsCounted() {
         SensorDevice laptop = new SensorDevice(5L, LAPTOP, BEFORE);
-        laptop.setAuthorized(false);
+        laptop.authorize(false);
         when(devices.existsByNetworkId(5L)).thenReturn(true);
         when(devices.findByNetworkIdOrderByFirstSeenAtAsc(5L)).thenReturn(List.of(laptop));
 

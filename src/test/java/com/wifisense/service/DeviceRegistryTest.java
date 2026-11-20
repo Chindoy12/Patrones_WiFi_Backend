@@ -76,7 +76,7 @@ class DeviceRegistryTest {
         InMemory registry = new InMemory(sessions);
         AgentReportRequest.DeviceInfo phone = new AgentReportRequest.DeviceInfo(PHONE, null, null, null);
         registry.register(5L, report(phone), NOW);
-        registry.stored.get(0).setAuthorized(false);
+        registry.stored.get(0).authorize(false);
 
         DeviceRegistry.Outcome outcome = registry.register(5L, report(phone), NOW);
 

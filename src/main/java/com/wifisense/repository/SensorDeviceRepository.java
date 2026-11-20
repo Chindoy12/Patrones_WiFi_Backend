@@ -1,5 +1,6 @@
 package com.wifisense.repository;
 
+import com.wifisense.model.ObservedDevice;
 import com.wifisense.model.SensorDevice;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
@@ -10,7 +11,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 
-public interface SensorDeviceRepository extends JpaRepository<SensorDevice, SensorDevice.Key> {
+public interface SensorDeviceRepository extends JpaRepository<SensorDevice, ObservedDevice.Key> {
 
     List<SensorDevice> findByNetworkIdOrderByFirstSeenAtAsc(Long networkId);
 

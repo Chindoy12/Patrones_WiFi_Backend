@@ -60,16 +60,7 @@ public class SensorDeviceService {
         }
         SensorDevice device = devices.findByNetworkIdAndFingerprint(networkId, fingerprint)
                 .orElseThrow(() -> new ResourceNotFoundException("el equipo", fingerprint));
-        if (label != null) {
-            String trimmed = label.trim();
-            device.rename(trimmed.isEmpty() ? null : trimmed);
-        }
-        if (authorized != null) {
-            device.setAuthorized(authorized);
-        }
-        return new AgentOverview.Device(device.getFingerprint(), device.getLabel(), device.getVendor(),
-                device.getHostname(), device.isPrivateMac(), device.isAuthorized(), device.getFirstSeenAt(),
-                device.getLastSeenAt(), false, false, device.getKind(), device.getRole(), device.getModel(),
-                device.getNameSource());
+        device.edit(label, authorized);
+        return AgentOverview.Device.of(device, false, false);
     }
 }
